@@ -1,5 +1,6 @@
 // Operations on whole blocks, addressed by document position.
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { findWrapping } from '@tiptap/pm/transform';
 
 const ITEM_TYPES = new Set(['listItem', 'taskItem']);
 
@@ -86,4 +87,46 @@ export function currentBlockPos(state, { preferListItem = true } = {}) {
 
 export function topLevelBlockPos(state) {
   return currentBlockPos(state, { preferListItem: false });
+}
+
+/**
+ * Move the top-level block at `from` so that it starts at `to` (a position
+ * between top-level blocks, in the current document). One undoable step.
+ */
+export function moveBlockTo(editor, from, to) {
+  const { state, view } = editor;
+  const node = state.doc.nodeAt(from);
+  if (!node) return false;
+  const end = from + node.nodeSize;
+  if (to >= from && to <= end) return false; // dropped where it already is
+  const tr = state.tr.delete(from, end);
+  const target = tr.mapping.map(to);
+  tr.insert(target, node);
+  selectInside(tr, target);
+  view.dispatch(tr.scrollIntoView());
+  view.focus();
+  return true;
+}
+
+/**
+ * Tiptap command: wrap the selection in a container block (quote, callout).
+ * Inside a list the innermost block cannot be wrapped on its own, so the
+ * whole top-level block is wrapped instead.
+ */
+export function wrapSelectionIn(typeName, attrs = null) {
+  return ({ state, dispatch }) => {
+    const type = state.schema.nodes[typeName];
+    const { $from, $to } = state.selection;
+    let range = $from.blockRange($to);
+    let wrapping = range && findWrapping(range, type, attrs);
+    if (!wrapping && $from.depth > 0) {
+      const $start = state.doc.resolve($from.before(1));
+      const $end = state.doc.resolve($to.after(1));
+      range = $start.blockRange($end);
+      wrapping = range && findWrapping(range, type, attrs);
+    }
+    if (!wrapping) return false;
+    if (dispatch) dispatch(state.tr.wrap(range, wrapping).scrollIntoView());
+    return true;
+  };
 }

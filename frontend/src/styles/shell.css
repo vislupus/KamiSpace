@@ -444,3 +444,10 @@ a.crumb:hover {
     display: none;
   }
 }
+@media (max-width: 560px) {
+  /* Only the current page fits in the top bar. */
+  .breadcrumbs .crumb:not(:last-child),
+  .breadcrumbs .crumb-sep {
+    display: none;
+  }
+}

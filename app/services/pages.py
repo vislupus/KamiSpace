@@ -398,7 +398,7 @@ def save_content(
         )
 
     latest = versions.latest_version(db, page.id)
-    if doc == page.content and not stale:
+    if doc == page.content and not stale and not force:
         return page, latest.number if latest else 0
 
     current_revision = page.revision
@@ -420,7 +420,9 @@ def save_content(
     db.refresh(page)
 
     files.link_attachments(db, access, page.id, extract_attachment_ids(doc))
-    version = versions.record_version(db, page, user, force_new=stale)
+    # An overwrite the user confirmed must never be folded into (and thereby
+    # erase) the version it replaces.
+    version = versions.record_version(db, page, user, force_new=stale or force)
     search.index_page(db, page)
     return page, version.number
 

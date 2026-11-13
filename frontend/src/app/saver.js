@@ -105,7 +105,6 @@ export class DocSaver {
   /** The user chose to keep their version: overwrite, the other one stays in history. */
   overwrite() {
     if (!this.conflict) return Promise.resolve();
-    this.revision = this.conflict.current_revision ?? this.revision;
     return this.save({ force: true });
   }
 

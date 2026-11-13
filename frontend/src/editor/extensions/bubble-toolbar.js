@@ -1,6 +1,6 @@
 // Floating formatting toolbar, shown only while text is selected.
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { h, kbd } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 import { openMenu } from '../../lib/menu.js';
@@ -113,7 +113,8 @@ class BubbleToolbarView {
     const { editor, view } = this;
     const { selection } = view.state;
     if (!editor.isEditable || this.pointerDown || !view.hasFocus()) return false;
-    if (!(selection instanceof TextSelection) || selection.empty) return false;
+    const isText = selection instanceof TextSelection || selection instanceof AllSelection;
+    if (!isText || selection.empty) return false;
     if (selection.$from.parent.type.spec.code) return false;
     return view.state.doc.textBetween(selection.from, selection.to, ' ').trim().length > 0;
   }

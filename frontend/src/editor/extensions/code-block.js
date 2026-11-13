@@ -66,6 +66,11 @@ lowlight.registerAlias(
   }, {}),
 );
 
+// "Plain text" means exactly that: no automatic language detection, which
+// would guess (often wrongly) and run every grammar on each change.
+const highlighter = Object.create(lowlight);
+highlighter.highlightAuto = () => ({ type: 'root', children: [] });
+
 function canonical(language) {
   if (!language) return '';
   const id = ALIASES[language] ?? language;
@@ -145,7 +150,7 @@ export const CodeBlock = CodeBlockLowlight.extend({
     };
   },
 }).configure({
-  lowlight,
+  lowlight: highlighter,
   defaultLanguage: null,
   enableTabIndentation: true,
   tabSize: 2,

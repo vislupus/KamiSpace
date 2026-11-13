@@ -180,9 +180,17 @@ function onKeyDown(event) {
   } else if (event.altKey && !event.shiftKey && !mod && event.code === 'KeyN') {
     event.preventDefault();
     createPage({ workspaceId: personalWorkspace()?.id });
-  } else if (event.key === 'Escape' && isFocusMode() && !hasOpenPopover() && !event.defaultPrevented) {
-    toggleFocusMode();
   }
+}
+
+/**
+ * Escape leaves focus mode. Checked in the capture phase because the editor
+ * consumes Escape itself; menus and dialogs that are open get it first.
+ */
+function onEscapeCapture(event) {
+  if (event.key !== 'Escape' || !isFocusMode()) return;
+  if (isModalOpen() || hasOpenPopover() || document.querySelector('.slash-menu')) return;
+  toggleFocusMode();
 }
 
 // -- start --------------------------------------------------------------------
@@ -218,6 +226,11 @@ async function start() {
     onShortcuts: openShortcuts,
     onToggle: toggleSidebar,
     onMove: openMoveDialog,
+    // On small screens the sidebar is an overlay: picking a page closes it,
+    // even when that page is already open.
+    onOpenPage: () => {
+      if (smallScreen.matches) setSidebar(false, { remember: false });
+    },
   });
   const backdrop = h('div', { class: 'sidebar-backdrop' });
   backdrop.addEventListener('click', () => setSidebar(false, { remember: false }));
@@ -235,6 +248,7 @@ async function start() {
   });
 
   document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keydown', onEscapeCapture, true);
   addLeaveGuard(() => currentView?.flush?.());
   on('tree-stale', () => refreshTree().catch(() => {}));
   startRouter(showRoute);

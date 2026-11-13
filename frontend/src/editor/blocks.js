@@ -1,6 +1,7 @@
 // The block catalogue. Slash commands, the "+" button and the "Turn into"
 // menu are all generated from this list — adding a block type means adding an
 // entry here (plus its Tiptap extension).
+import { wrapSelectionIn } from './block-ops.js';
 import { pickAndUploadFiles } from './extensions/uploads.js';
 import { openLinkEditor } from './extensions/link-editor.js';
 
@@ -83,7 +84,7 @@ export const BLOCKS = [
     hint: '>',
     keywords: ['blockquote', 'citation'],
     convert: true,
-    apply: (chain) => chain.setBlockquote(),
+    apply: (chain) => chain.command(wrapSelectionIn('blockquote')),
     isActive: (editor) => editor.isActive('blockquote'),
   },
   {
@@ -105,7 +106,7 @@ export const BLOCKS = [
     icon: 'info',
     keywords: ['note', 'info', 'warning', 'tip', 'admonition', 'highlight'],
     convert: true,
-    apply: (chain) => chain.setCallout(),
+    apply: (chain) => chain.command(wrapSelectionIn('callout')),
     isActive: (editor) => editor.isActive('callout'),
   },
   {

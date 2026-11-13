@@ -117,12 +117,13 @@ def user_directory(db: Session, query: str, limit: int = 12) -> list[dict[str, A
     statement = select(User).where(User.is_active)
     query = query.strip().lower()
     if query:
-        like = f"%{query}%"
+        # Names only: matching on email would let anyone probe addresses.
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
         statement = statement.where(
             or_(
-                func.lower(User.display_name).like(like),
-                User.username.like(like),
-                User.email.like(like),
+                func.lower(User.display_name).like(like, escape="\\"),
+                User.username.like(like, escape="\\"),
             )
         )
     rows = db.execute(statement.order_by(func.lower(User.display_name)).limit(limit)).scalars()

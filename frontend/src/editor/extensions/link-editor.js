@@ -1,7 +1,11 @@
 // Insert, edit and remove links (Ctrl/Cmd+K), plus a small popover for
 // existing links.
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+
+function isTextual(selection) {
+  return selection instanceof TextSelection || selection instanceof AllSelection;
+}
 import { h } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 import { openPopover } from '../../lib/popover.js';
@@ -19,7 +23,7 @@ function selectionRect(view) {
 }
 
 export function openLinkEditor(editor) {
-  if (!editor.isEditable || !(editor.state.selection instanceof TextSelection)) return;
+  if (!editor.isEditable || !isTextual(editor.state.selection)) return;
   const { view } = editor;
   const { empty } = editor.state.selection;
   const existing = editor.getAttributes('link').href || '';
@@ -171,7 +175,7 @@ export const LinkEditor = Extension.create({
       // the key is left alone and opens the global search.
       'Mod-k': () => {
         const { selection } = this.editor.state;
-        if (!(selection instanceof TextSelection)) return false;
+        if (!isTextual(selection)) return false;
         if (selection.empty && !this.editor.isActive('link')) return false;
         if (this.editor.isActive('codeBlock')) return false;
         openLinkEditor(this.editor);

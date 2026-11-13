@@ -109,8 +109,12 @@ def create_app() -> FastAPI:
             headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         if request.url.scheme == "https":
             headers.setdefault("Strict-Transport-Security", "max-age=31536000")
-        if request.url.path.startswith("/api/"):
+        path = request.url.path
+        if path.startswith("/api/"):
             headers.setdefault("Cache-Control", "no-store")
+        elif path.startswith("/static/dist/assets/") and response.status_code == 200:
+            # Bundled assets carry a content hash in their file name.
+            headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
     @app.exception_handler(AppError)

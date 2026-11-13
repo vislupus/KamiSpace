@@ -255,3 +255,19 @@ def test_security_headers(alice):
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "SAMEORIGIN"
     assert alice.get("/api/bootstrap").headers["cache-control"] == "no-store"
+
+
+def test_bundled_assets_are_cached_but_pages_are_not(alice):
+    import json
+
+    from app.config import BASE_DIR
+
+    manifest_path = BASE_DIR / "static" / "dist" / ".vite" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    asset = alice.http.get(f"/static/dist/{manifest['src/main.js']['file']}")
+    assert asset.status_code == 200
+    assert "immutable" in asset.headers["cache-control"]
+    shell = alice.http.get("/")
+    assert shell.headers["cache-control"] == "no-store"
+    # Every script and stylesheet the shell references is served locally.
+    assert "http://" not in shell.text and "https://" not in shell.text

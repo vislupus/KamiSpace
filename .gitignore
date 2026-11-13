@@ -228,8 +228,9 @@ __marimo__/
 .env.*
 !.env.example
 
-# uv cache kept inside the project (see uv.toml)
+# uv cache and uv-managed Python kept inside the project (see uv.toml, docs)
 .uv-cache/
+/.python/
 
 # Frontend tooling
 node_modules/

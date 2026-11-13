@@ -88,6 +88,7 @@ def test_unknown_nodes_marks_and_attributes_are_dropped():
     assert cleaned == wrap(
         para(text_node("kept")),
         {"type": "heading", "attrs": {"level": 3}, "content": [text_node("Title")]},
+        {"type": "paragraph"},
     )
 
 
@@ -101,7 +102,7 @@ def test_image_and_attachment_ids_must_be_well_formed():
         {"type": "attachment", "attrs": {"attachmentId": "nope"}},
     )
     cleaned = sanitize_document(dirty)
-    assert [n["type"] for n in cleaned["content"]] == ["image", "attachment"]
+    assert [n["type"] for n in cleaned["content"]] == ["image", "attachment", "paragraph"]
     assert "src" not in cleaned["content"][0]["attrs"]
     assert extract_attachment_ids(cleaned) == {good}
 
@@ -143,7 +144,11 @@ def test_structure_is_preserved_for_supported_blocks():
             ],
         },
     )
-    assert sanitize_document(document) == document
+    cleaned = sanitize_document(document)
+    # Everything survives untouched; a trailing paragraph follows the table.
+    assert cleaned["content"][:-1] == document["content"]
+    assert cleaned["content"][-1] == {"type": "paragraph"}
+    assert sanitize_document(cleaned) == cleaned
 
 
 def test_empty_or_invalid_documents():

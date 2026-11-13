@@ -503,8 +503,24 @@ button.callout-icon:disabled {
 .block-grip:active {
   cursor: grabbing;
 }
-.doc.is-block-dragging .ProseMirror-selectednode {
+.is-block-dragging .doc .ProseMirror-selectednode {
   opacity: 0.4;
+}
+/* While a block is dragged by its handle we draw our own drop line. */
+.is-block-dragging .prosemirror-dropcursor-block,
+.is-block-dragging .prosemirror-dropcursor-inline {
+  display: none;
+}
+.block-drop-line {
+  position: absolute;
+  z-index: 3;
+  left: var(--editor-gutter);
+  right: var(--editor-gutter);
+  height: 3px;
+  margin-top: -1.5px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
 }
 @media (hover: none) {
   .block-handle {

@@ -32,7 +32,15 @@ import { expandAll, isExpanded, setExpanded } from './tree-state.js';
 
 const DRAG_TYPE = 'application/x-minddock-page';
 
-export function createSidebar({ onSearch, onCapture, onSettings, onShortcuts, onToggle, onMove }) {
+export function createSidebar({
+  onSearch,
+  onCapture,
+  onSettings,
+  onShortcuts,
+  onToggle,
+  onMove,
+  onOpenPage,
+}) {
   const scroll = h('div', { class: 'sidebar-scroll', role: 'tree', 'aria-label': 'Pages' });
   let renaming = null;
   let dragging = null;
@@ -277,7 +285,10 @@ export function createSidebar({ onSearch, onCapture, onSettings, onShortcuts, on
       event.stopPropagation();
       createPage({ parentId: page.id });
     });
-    row.addEventListener('click', () => navigate(pagePath(page.id)));
+    row.addEventListener('click', () => {
+      onOpenPage?.(page.id);
+      navigate(pagePath(page.id));
+    });
     row.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       pageMenu(page, { x: event.clientX, y: event.clientY }, row);

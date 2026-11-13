@@ -216,6 +216,10 @@ def test_viewer_duplicate_lands_in_own_workspace(alice, bob):
 def test_user_directory_lists_only_public_fields(alice, bob):
     people = alice.get("/api/users?q=bo").json()
     assert people == [{"id": bob.user_id, "username": "bob", "display_name": "Bob"}]
+    # Email addresses are neither returned nor searchable; wildcards are literal.
+    assert alice.get("/api/users?q=example.com").json() == []
+    assert alice.get("/api/users", params={"q": "%"}).json() == []
+    assert alice.get("/api/users", params={"q": "b_b"}).json() == []
 
 
 # -- team workspaces ---------------------------------------------------------

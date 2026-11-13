@@ -179,6 +179,21 @@ def test_forced_overwrite_keeps_the_other_version_in_history(alice, client_facto
     assert theirs["content"] == doc("theirs")
 
 
+def test_forced_overwrite_is_never_folded_even_with_a_current_base(alice, client_factory):
+    """The client may resolve a conflict by re-sending with the latest revision."""
+    page = alice.create_page("Doc")
+    other_tab = client_factory()
+    other_tab.login("alice")
+    theirs = save(alice, page["id"], "theirs", 1).json()
+
+    forced = save(other_tab, page["id"], "mine", theirs["revision"], force=True)
+    assert forced.status_code == 200
+    history = versions_of(alice, page["id"])
+    assert len(history) == 2
+    kept = alice.get(f"/api/pages/{page['id']}/versions/{history[1]['id']}").json()
+    assert kept["content"] == doc("theirs")
+
+
 def test_restore_bumps_revision_so_open_editors_conflict(alice):
     page = alice.create_page("Doc")
     first = save(alice, page["id"], "one", 1).json()

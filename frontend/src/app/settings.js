@@ -3,6 +3,7 @@
 import { api } from '../lib/api.js';
 import { h, replace } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
+import { openMenu } from '../lib/menu.js';
 import { confirmDialog, openModal, promptDialog } from '../lib/modal.js';
 import { getThemeChoice, setThemeChoice } from '../lib/theme.js';
 import { toast, toastError } from '../lib/toast.js';
@@ -561,37 +562,52 @@ function usersPane(pane) {
       await guarded(() => api.patch(`/api/admin/users/${user.id}`, changes));
       load();
     };
-    return [
-      h(
-        'button',
-        {
-          class: 'button button-small button-ghost',
-          type: 'button',
-          onclick: async () => {
-            const password = await promptDialog({
-              title: `New password for ${user.display_name}`,
-              label: 'At least 8 characters. They will be signed out everywhere.',
-              type: 'password',
-              confirmLabel: 'Set password',
-            });
-            if (!password) return;
-            const ok = await guarded(() => api.post(`/api/admin/users/${user.id}/password`, { password }));
-            if (ok) toast('Password updated', { type: 'success' });
+    const resetPassword = async () => {
+      const password = await promptDialog({
+        title: `New password for ${user.display_name}`,
+        label: 'At least 8 characters. They will be signed out everywhere.',
+        type: 'password',
+        confirmLabel: 'Set password',
+      });
+      if (!password) return;
+      const ok = await guarded(() => api.post(`/api/admin/users/${user.id}/password`, { password }));
+      if (ok) toast('Password updated', { type: 'success' });
+    };
+    const button = h(
+      'button',
+      {
+        class: 'icon-button',
+        type: 'button',
+        title: 'Manage user',
+        'aria-label': `Manage ${user.display_name}`,
+        'aria-haspopup': 'menu',
+      },
+      icon('more', 16),
+    );
+    button.addEventListener('click', () => {
+      openMenu({
+        anchor: button,
+        placement: 'bottom-end',
+        items: [
+          { label: 'Reset password…', icon: 'key', onSelect: resetPassword },
+          {
+            label: user.is_admin ? 'Remove administrator role' : 'Make administrator',
+            icon: 'shield',
+            onSelect: () => patch({ is_admin: !user.is_admin }),
           },
-        },
-        'Reset password',
-      ),
-      h(
-        'button',
-        { class: 'button button-small button-ghost', type: 'button', onclick: () => patch({ is_admin: !user.is_admin }) },
-        user.is_admin ? 'Remove admin' : 'Make admin',
-      ),
-      h(
-        'button',
-        { class: 'button button-small button-ghost', type: 'button', onclick: () => patch({ is_active: !user.is_active }) },
-        user.is_active ? 'Deactivate' : 'Activate',
-      ),
-    ];
+          { separator: true },
+          user.is_active
+            ? {
+                label: 'Deactivate account',
+                icon: 'lock',
+                danger: true,
+                onSelect: () => patch({ is_active: false }),
+              }
+            : { label: 'Reactivate account', icon: 'check', onSelect: () => patch({ is_active: true }) },
+        ],
+      });
+    });
+    return button;
   }
 
   function openCreateUser() {

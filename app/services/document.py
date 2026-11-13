@@ -212,8 +212,11 @@ def sanitize_document(doc: Any) -> dict[str, Any]:
             cleaned = _clean_node(child, 1, counter)
             if cleaned is not None and cleaned["type"] not in INLINE_NODES:
                 blocks.append(cleaned)
-    if not blocks:
-        blocks = [{"type": "paragraph"}]
+    # The editor always keeps an empty paragraph after a trailing non-text
+    # block (so there is somewhere to type). Storing documents in that shape
+    # means merely opening a page never produces a change to save.
+    if not blocks or blocks[-1]["type"] != "paragraph":
+        blocks.append({"type": "paragraph"})
     return {"type": "doc", "content": blocks}
 
 

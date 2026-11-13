@@ -1,13 +1,13 @@
 // The "+" button and drag handle that appear next to the block under the
-// pointer. Dragging uses ProseMirror's own drag-and-drop: we select the block
-// and hand the editor a slice to move, so drops, the drop cursor and undo all
-// behave exactly like native editor drags.
+// pointer. Dragging a handle reorders top-level blocks: a line shows the gap
+// the block will land in (decided by the pointer's vertical position), and
+// the move is a single undoable step.
 import { Extension } from '@tiptap/core';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import { h, kbd } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 import { openMenu } from '../../lib/menu.js';
-import { deleteBlock, duplicateBlock, moveNode } from '../block-ops.js';
+import { deleteBlock, duplicateBlock, moveBlockTo, moveNode } from '../block-ops.js';
 import { CONVERTIBLE_BLOCKS, applyBlock } from '../blocks.js';
 
 const HANDLE_HEIGHT = 24;
@@ -51,7 +51,10 @@ class BlockHandleView {
     );
     this.el = h('div', { class: 'block-handle', contentEditable: 'false' }, this.addButton, this.grip);
     this.el.hidden = true;
-    this.container.append(this.el);
+    this.dropLine = h('div', { class: 'block-drop-line', hidden: true });
+    this.dragFrom = null;
+    this.dropTo = null;
+    this.container.append(this.el, this.dropLine);
 
     this.container.addEventListener('mousemove', (event) => this.onPointerMove(event), { signal });
     this.container.addEventListener('mouseleave', () => this.scheduleHide(), { signal });
@@ -63,6 +66,7 @@ class BlockHandleView {
     this.grip.addEventListener('click', () => this.openBlockMenu(), { signal });
     this.grip.addEventListener('dragstart', (event) => this.onDragStart(event), { signal });
     this.grip.addEventListener('dragend', () => this.onDragEnd(), { signal });
+    view.dom.addEventListener('dragover', (event) => this.onDragOver(event), { signal });
   }
 
   // -- locating the block under the pointer --------------------------------
@@ -157,12 +161,6 @@ class BlockHandleView {
 
   // -- drag and drop --------------------------------------------------------
 
-  selectBlock() {
-    if (this.currentNode() === null) return;
-    const { state } = this.view;
-    this.view.dispatch(state.tr.setSelection(NodeSelection.create(state.doc, this.blockPos)));
-  }
-
   onDragStart(event) {
     const node = this.currentNode();
     if (!node) {
@@ -170,24 +168,75 @@ class BlockHandleView {
       return;
     }
     const { view } = this;
-    this.selectBlock();
-    const selection = view.state.selection;
-    view.dragging = { slice: selection.content(), move: true };
-    event.dataTransfer.effectAllowed = 'copyMove';
+    this.dragFrom = this.blockPos;
+    this.dropTo = null;
+    view.dispatch(
+      view.state.tr.setSelection(NodeSelection.create(view.state.doc, this.blockPos)),
+    );
+    event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', node.textContent || ' ');
     const dom = view.nodeDOM(this.blockPos);
     if (dom instanceof HTMLElement) event.dataTransfer.setDragImage(dom, 0, 0);
-    view.dom.classList.add('is-block-dragging');
-    this.el.hidden = true;
+    document.documentElement.classList.add('is-block-dragging');
+    // Hiding the drag source synchronously would cancel the drag.
+    setTimeout(() => {
+      this.el.hidden = true;
+    }, 0);
+  }
+
+  /** The gap between top-level blocks closest to the pointer. */
+  dropTarget(clientY) {
+    const { view } = this;
+    const containerTop = this.container.getBoundingClientRect().top;
+    let result = null;
+    let previousBottom = null;
+    view.state.doc.forEach((node, offset) => {
+      if (result) return;
+      const dom = view.nodeDOM(offset);
+      if (!(dom instanceof HTMLElement)) return;
+      const rect = dom.getBoundingClientRect();
+      if (clientY < rect.top + rect.height / 2) {
+        const y = previousBottom === null ? rect.top - 2 : (previousBottom + rect.top) / 2;
+        result = { pos: offset, top: y - containerTop };
+      }
+      previousBottom = rect.bottom;
+    });
+    if (!result && previousBottom !== null) {
+      result = { pos: view.state.doc.content.size, top: previousBottom + 2 - containerTop };
+    }
+    return result;
+  }
+
+  onDragOver(event) {
+    if (this.dragFrom === null) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const target = this.dropTarget(event.clientY);
+    if (!target) return;
+    this.dropTo = target.pos;
+    this.dropLine.style.top = `${Math.round(target.top)}px`;
+    this.dropLine.hidden = false;
+  }
+
+  /** Called through the plugin's handleDrop; true when the drop was ours. */
+  onDrop(event) {
+    if (this.dragFrom === null) return false;
+    const target = this.dropTarget(event.clientY);
+    const from = this.dragFrom;
+    this.finishDrag();
+    if (target) moveBlockTo(this.editor, from, target.pos);
+    return true;
+  }
+
+  finishDrag() {
+    this.dragFrom = null;
+    this.dropTo = null;
+    this.dropLine.hidden = true;
+    document.documentElement.classList.remove('is-block-dragging');
   }
 
   onDragEnd() {
-    const { view } = this;
-    view.dom.classList.remove('is-block-dragging');
-    // Mirrors ProseMirror's own dragend handling.
-    setTimeout(() => {
-      if (!view.isDestroyed) view.dragging = null;
-    }, 50);
+    this.finishDrag();
     this.blockPos = null;
   }
 
@@ -271,8 +320,10 @@ class BlockHandleView {
   destroy() {
     cancelAnimationFrame(this.frame);
     clearTimeout(this.hideTimer);
+    this.finishDrag();
     this.controller.abort();
     this.el.remove();
+    this.dropLine.remove();
   }
 }
 
@@ -281,10 +332,17 @@ export const BlockHandle = Extension.create({
 
   addProseMirrorPlugins() {
     const editor = this.editor;
+    let handle = null;
     return [
       new Plugin({
         key: new PluginKey('blockHandle'),
-        view: (view) => new BlockHandleView(view, editor),
+        view: (view) => {
+          handle = new BlockHandleView(view, editor);
+          return handle;
+        },
+        props: {
+          handleDrop: (_view, event) => handle?.onDrop(event) ?? false,
+        },
       }),
     ];
   },

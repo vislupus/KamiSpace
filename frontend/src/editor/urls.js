@@ -5,7 +5,6 @@ const SAFE_URL = /^(https?:\/\/|mailto:|tel:|\/(?!\/)|#)/i;
 export function isSafeUrl(url) {
   if (typeof url !== 'string' || url.length > 2048) return false;
   // Browsers ignore whitespace and control characters inside a scheme.
-  // eslint-disable-next-line no-control-regex
   return SAFE_URL.test(url.replace(/[\u0000-\u001f\u007f\s]+/g, ''));
 }
 
