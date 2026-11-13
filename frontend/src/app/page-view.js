@@ -486,7 +486,8 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
   renderStar();
   resizeTitle();
   document.title = `${page.title || 'Untitled'} · MindDock`;
-  container.scrollTop = 0;
+  // A new page starts at the top, without animating from the old position.
+  container.scrollTo({ top: 0, behavior: 'instant' });
 
   editor = editorModule.createEditor({
     element: editorMount,

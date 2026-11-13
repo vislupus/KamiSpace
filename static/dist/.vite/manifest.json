@@ -11,7 +11,7 @@
     "src": "_dom-ONc4l6Qg.css"
   },
   "src/app/history.js": {
-    "file": "assets/history-Cqq902Ws.js",
+    "file": "assets/history-Dn4Hk7KE.js",
     "name": "history",
     "src": "src/app/history.js",
     "isDynamicEntry": true,
@@ -21,7 +21,7 @@
     ]
   },
   "src/app/settings.js": {
-    "file": "assets/settings-BoCuVroN.js",
+    "file": "assets/settings-DuYOKJfL.js",
     "name": "settings",
     "src": "src/app/settings.js",
     "isDynamicEntry": true,
@@ -43,7 +43,7 @@
     ]
   },
   "src/editor/index.js": {
-    "file": "assets/editor-DvxOkI4I.js",
+    "file": "assets/editor-BFUmAXfC.js",
     "name": "editor",
     "src": "src/editor/index.js",
     "isDynamicEntry": true,
@@ -53,7 +53,7 @@
     ]
   },
   "src/main.js": {
-    "file": "assets/main-Dxqnst5j.js",
+    "file": "assets/main-CfK-xRbM.js",
     "name": "main",
     "src": "src/main.js",
     "isEntry": true,
@@ -66,7 +66,7 @@
       "src/app/settings.js"
     ],
     "css": [
-      "assets/main-B7UF6M0K.css"
+      "assets/main-C8Ck08CV.css"
     ]
   }
 }

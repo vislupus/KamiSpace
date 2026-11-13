@@ -343,12 +343,14 @@ button.callout-icon:disabled {
   border-top: 1px solid var(--border);
   background: var(--bg-inset);
 }
-.ProseMirror-selectednode.image-block img,
-.attachment.ProseMirror-selectednode,
-.doc hr.ProseMirror-selectednode,
-.code-block.ProseMirror-selectednode,
-.callout.ProseMirror-selectednode,
-.doc > .ProseMirror-selectednode {
+/* A selected block is outlined only while the editor has the focus. */
+.ProseMirror-focused .ProseMirror-selectednode.image-block img,
+.ProseMirror-focused .attachment.ProseMirror-selectednode,
+.ProseMirror-focused hr.ProseMirror-selectednode,
+.ProseMirror-focused .code-block.ProseMirror-selectednode,
+.ProseMirror-focused .callout.ProseMirror-selectednode,
+.ProseMirror-focused.doc > .ProseMirror-selectednode,
+.is-block-dragging .doc > .ProseMirror-selectednode {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 6px;
