@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>{{ title }}</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <script src="/static/theme-init.js"></script>
+    {% for href in assets.styles %}<link rel="stylesheet" href="{{ href }}">
+    {% endfor %}{% for href in assets.preloads %}<link rel="modulepreload" href="{{ href }}">
+    {% endfor %}
+  </head>
+  <body class="{% block body_class %}{% endblock %}">
+    {% if assets.missing %}
+    <div class="build-missing">
+      <h1>MindDock</h1>
+      <p>The frontend bundle has not been built yet. Run <code>npm install</code> and
+      <code>npm run build</code> inside the <code>frontend</code> directory.</p>
+    </div>
+    {% endif %}
+    {% block body %}{% endblock %}
+    {% for src in assets.scripts %}<script type="module" src="{{ src }}"></script>
+    {% endfor %}
+  </body>
+</html>

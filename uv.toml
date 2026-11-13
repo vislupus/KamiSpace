@@ -1,0 +1,3 @@
+# Keep uv's download cache inside the project so that nothing is written
+# outside this directory. The virtual environment already lives in .venv/.
+cache-dir = ".uv-cache"

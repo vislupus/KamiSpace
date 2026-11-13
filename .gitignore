@@ -218,3 +218,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- MindDock -----------------------------------------------------------
+# All runtime state (database, uploads, backups, logs, temp files) lives in
+# data/ and must never be committed.
+/data/*
+!/data/.gitkeep
+.env
+.env.*
+!.env.example
+
+# uv cache and uv-managed Python kept inside the project (see uv.toml, docs)
+.uv-cache/
+/.python/
+
+# Frontend tooling
+node_modules/
+frontend/test-results/
+frontend/playwright-report/
+
+# The built frontend bundle IS committed so that running MindDock needs no
+# Node.js. The generic "dist/" rule above would otherwise hide it.
+!/static/dist/

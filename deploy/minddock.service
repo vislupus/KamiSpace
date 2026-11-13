@@ -1,0 +1,39 @@
+# systemd unit for MindDock.
+#
+#   sudo cp deploy/minddock.service /etc/systemd/system/minddock.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now minddock
+#
+# Adjust User, WorkingDirectory and the path to uv to match your installation.
+
+[Unit]
+Description=MindDock knowledge workspace
+After=network.target
+
+[Service]
+Type=simple
+User=minddock
+Group=minddock
+WorkingDirectory=/opt/minddock
+Environment=MINDDOCK_ENV=production
+Environment=UV_CACHE_DIR=/opt/minddock/.uv-cache
+Environment=UV_PYTHON_INSTALL_DIR=/opt/minddock/.python
+# --frozen: use exactly the versions in uv.lock; --no-dev: skip test tooling.
+ExecStart=/usr/local/bin/uv run --frozen --no-dev python -m app run
+Restart=on-failure
+RestartSec=3
+
+# Hardening: the service only ever needs to write inside its own directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/minddock
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

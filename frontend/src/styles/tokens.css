@@ -1,0 +1,106 @@
+/* Design tokens. Every colour in the app comes from these variables, which is
+   what makes the light and dark themes consistent. */
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI",
+    Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Noto Color Emoji";
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", Menlo,
+    monospace;
+
+  --radius-s: 4px;
+  --radius-m: 6px;
+  --radius-l: 10px;
+
+  --sidebar-width: 252px;
+  --topbar-height: 44px;
+  --editor-width: 760px;
+  --editor-gutter: 56px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --fast: 120ms;
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-sidebar: #f7f7f8;
+  --bg-elevated: #ffffff;
+  --bg-inset: #f4f5f7;
+  --bg-hover: rgba(24, 27, 33, 0.055);
+  --bg-active: rgba(24, 27, 33, 0.09);
+  --border: #e8e9ed;
+  --border-strong: #d5d7dd;
+  --text: #1d2026;
+  --text-2: #5d6471;
+  --text-3: #8e949f;
+  --accent: #4263eb;
+  --accent-hover: #3b58d6;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgba(66, 99, 235, 0.11);
+  --selection: rgba(66, 99, 235, 0.2);
+  --danger: #d6364e;
+  --danger-soft: rgba(214, 54, 78, 0.1);
+  --success: #1c9a5e;
+  --warning: #b97509;
+  --shadow-pop: 0 0 0 1px rgba(16, 22, 36, 0.07), 0 6px 22px rgba(16, 22, 36, 0.12);
+  --shadow-modal: 0 0 0 1px rgba(16, 22, 36, 0.07), 0 18px 50px rgba(16, 22, 36, 0.2);
+  --backdrop: rgba(18, 20, 26, 0.32);
+
+  --callout-info: rgba(66, 99, 235, 0.08);
+  --callout-success: rgba(28, 154, 94, 0.1);
+  --callout-warning: rgba(214, 150, 20, 0.14);
+  --callout-danger: rgba(214, 54, 78, 0.09);
+  --callout-note: rgba(24, 27, 33, 0.05);
+
+  --code-text: #24292f;
+  --code-keyword: #cf222e;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-comment: #6e7781;
+  --code-title: #8250df;
+  --code-attr: #116329;
+  --code-inline: #c2255c;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #17191d;
+  --bg-sidebar: #1c1e23;
+  --bg-elevated: #23262c;
+  --bg-inset: #1f2227;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.1);
+  --border: #2b2e35;
+  --border-strong: #3b3f48;
+  --text: #e6e8ed;
+  --text-2: #a4aab6;
+  --text-3: #747b88;
+  --accent: #7f96ff;
+  --accent-hover: #93a6ff;
+  --accent-contrast: #10131a;
+  --accent-soft: rgba(127, 150, 255, 0.16);
+  --selection: rgba(127, 150, 255, 0.3);
+  --danger: #ff6f85;
+  --danger-soft: rgba(255, 111, 133, 0.14);
+  --success: #4cc38a;
+  --warning: #e5a93b;
+  --shadow-pop: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 22px 60px rgba(0, 0, 0, 0.6);
+  --backdrop: rgba(0, 0, 0, 0.55);
+
+  --callout-info: rgba(127, 150, 255, 0.13);
+  --callout-success: rgba(76, 195, 138, 0.13);
+  --callout-warning: rgba(229, 169, 59, 0.14);
+  --callout-danger: rgba(255, 111, 133, 0.13);
+  --callout-note: rgba(255, 255, 255, 0.05);
+
+  --code-text: #d7dae0;
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-number: #79c0ff;
+  --code-comment: #8b949e;
+  --code-title: #d2a8ff;
+  --code-attr: #7ee787;
+  --code-inline: #ff8fab;
+}
