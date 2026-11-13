@@ -31,15 +31,36 @@ def _load_manifest() -> dict[str, Any]:
 
 
 def asset_tags(entry: str) -> dict[str, list[str]]:
-    """Script and stylesheet URLs for a Vite entry point."""
+    """Script, stylesheet and preload URLs for a Vite entry point."""
     if not get_settings().is_production:
         _load_manifest.cache_clear()  # pick up rebuilds while developing
     manifest = _load_manifest()
-    chunk = manifest.get(entry)
-    if chunk is None:
-        return {"scripts": [], "styles": [], "missing": [entry]}
-    styles = [f"/static/dist/{css}" for css in chunk.get("css", [])]
-    return {"scripts": [f"/static/dist/{chunk['file']}"], "styles": styles, "missing": []}
+    if entry not in manifest:
+        return {"scripts": [], "styles": [], "preloads": [], "missing": [entry]}
+
+    styles: list[str] = []
+    preloads: list[str] = []
+    seen: set[str] = set()
+
+    def visit(key: str, is_entry: bool) -> None:
+        if key in seen or key not in manifest:
+            return
+        seen.add(key)
+        chunk = manifest[key]
+        # Shared chunks first, so their CSS precedes the entry's own rules.
+        for imported in chunk.get("imports", []):
+            visit(imported, False)
+        styles.extend(f"/static/dist/{css}" for css in chunk.get("css", []))
+        if not is_entry:
+            preloads.append(f"/static/dist/{chunk['file']}")
+
+    visit(entry, True)
+    return {
+        "scripts": [f"/static/dist/{manifest[entry]['file']}"],
+        "styles": styles,
+        "preloads": preloads,
+        "missing": [],
+    }
 
 
 def _render(request: Request, template: str, entry: str, **context: Any) -> Response:

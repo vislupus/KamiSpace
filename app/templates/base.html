@@ -8,6 +8,7 @@
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <script src="/static/theme-init.js"></script>
     {% for href in assets.styles %}<link rel="stylesheet" href="{{ href }}">
+    {% endfor %}{% for href in assets.preloads %}<link rel="modulepreload" href="{{ href }}">
     {% endfor %}
   </head>
   <body class="{% block body_class %}{% endblock %}">

@@ -1,0 +1,72 @@
+{
+  "_dom-DuLK6_zV.js": {
+    "file": "assets/dom-DuLK6_zV.js",
+    "name": "dom",
+    "css": [
+      "assets/dom-ONc4l6Qg.css"
+    ]
+  },
+  "_dom-ONc4l6Qg.css": {
+    "file": "assets/dom-ONc4l6Qg.css",
+    "src": "_dom-ONc4l6Qg.css"
+  },
+  "src/app/history.js": {
+    "file": "assets/history-Dimn4bLB.js",
+    "name": "history",
+    "src": "src/app/history.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_dom-DuLK6_zV.js",
+      "src/main.js"
+    ]
+  },
+  "src/app/settings.js": {
+    "file": "assets/settings-gn65lHmS.js",
+    "name": "settings",
+    "src": "src/app/settings.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_dom-DuLK6_zV.js",
+      "src/main.js"
+    ]
+  },
+  "src/auth.js": {
+    "file": "assets/auth-yhjQ-a45.js",
+    "name": "auth",
+    "src": "src/auth.js",
+    "isEntry": true,
+    "imports": [
+      "_dom-DuLK6_zV.js"
+    ],
+    "css": [
+      "assets/auth-DUdASHdq.css"
+    ]
+  },
+  "src/editor/index.js": {
+    "file": "assets/editor-BSDJxpek.js",
+    "name": "editor",
+    "src": "src/editor/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_dom-DuLK6_zV.js",
+      "src/main.js"
+    ]
+  },
+  "src/main.js": {
+    "file": "assets/main-Cti9gFG1.js",
+    "name": "main",
+    "src": "src/main.js",
+    "isEntry": true,
+    "imports": [
+      "_dom-DuLK6_zV.js"
+    ],
+    "dynamicImports": [
+      "src/editor/index.js",
+      "src/app/history.js",
+      "src/app/settings.js"
+    ],
+    "css": [
+      "assets/main-CYrsYcSY.css"
+    ]
+  }
+}
