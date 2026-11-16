@@ -220,3 +220,11 @@ def test_cli_creates_admin_and_resets_password(data_dir, app):
     assert client.login("root").json()["user"]["is_admin"] is True
     assert cli_main(["reset-password", "root", "--password", "a different password"]) == 0
     assert ApiClient(app).login("root", "a different password").status_code == 200
+
+
+def test_backups_made_before_the_rename_are_still_listed(admin):
+    archive = backups.create_backup()
+    legacy = archive.with_name(archive.name.replace("kamispace", "minddock"))
+    archive.rename(legacy)
+    assert [b["name"] for b in admin.get("/api/admin/backups").json()] == [legacy.name]
+    assert admin.get(f"/api/admin/backups/{legacy.name}").status_code == 200

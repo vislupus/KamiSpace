@@ -23,8 +23,8 @@ server {
     ssl_certificate     /etc/letsencrypt/live/notes.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/notes.example.com/privkey.pem;
 
-    # Must be at least KAMISPACE_MAX_UPLOAD_MB (default 25), plus a little room.
-    client_max_body_size 30m;
+    # Must be at least KAMISPACE_MAX_UPLOAD_MB (default 100), plus a little room.
+    client_max_body_size 110m;
 
     gzip on;
     gzip_types text/css application/javascript application/json image/svg+xml;

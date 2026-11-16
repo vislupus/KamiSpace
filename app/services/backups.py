@@ -21,7 +21,8 @@ from app import __version__
 from app.config import get_settings
 from app.errors import NotFound, ValidationFailed
 
-BACKUP_NAME_RE = re.compile(r"^kamispace-backup-\d{8}-\d{6}(-\d+)?\.zip$")
+# Archives made before the rename (minddock-backup-…) are still recognised.
+BACKUP_NAME_RE = re.compile(r"^(?:kamispace|minddock)-backup-\d{8}-\d{6}(-\d+)?\.zip$")
 _UPLOAD_MEMBER_RE = re.compile(r"^uploads/[0-9a-f]{2}/[0-9a-f]{32}$")
 DB_MEMBER = "database.sqlite3"
 MANIFEST_MEMBER = "manifest.json"

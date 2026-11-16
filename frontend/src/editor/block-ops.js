@@ -3,6 +3,8 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { findWrapping } from '@tiptap/pm/transform';
 
 const ITEM_TYPES = new Set(['listItem', 'taskItem']);
+// Blocks inside these containers can be moved among their siblings.
+const CONTAINER_TYPES = new Set(['column', 'detailsContent', 'callout', 'blockquote']);
 
 function selectInside(tr, pos) {
   const node = tr.doc.nodeAt(pos);
@@ -80,6 +82,10 @@ export function currentBlockPos(state, { preferListItem = true } = {}) {
   if (preferListItem) {
     for (let depth = $from.depth; depth > 0; depth -= 1) {
       if (ITEM_TYPES.has($from.node(depth).type.name)) return $from.before(depth);
+      // A block directly inside a column, toggle, callout or quote.
+      if (depth > 1 && CONTAINER_TYPES.has($from.node(depth - 1).type.name)) {
+        return $from.before(depth);
+      }
     }
   }
   return $from.depth === 0 ? $from.pos : $from.before(1);

@@ -103,7 +103,7 @@ test.describe('Block controls', () => {
     await openNewPage(page, session, { content: doc('convert me', 'untouched') });
     await openBlockMenu(page, 'convert me');
     await page.locator('.menu-item', { hasText: 'Turn into' }).click();
-    await page.locator('.menu-item', { hasText: 'Heading 2' }).click();
+    await page.getByRole('menuitem', { name: 'Heading 2', exact: true }).click();
     await expect(editor(page).locator('h2')).toHaveText('convert me');
 
     await openBlockMenu(page, 'convert me');
@@ -182,7 +182,7 @@ test.describe('Selection toolbar and links', () => {
     await clickInto(editor(page).locator('p').first());
     await page.keyboard.press(`${mod}+a`);
     await page.locator('.bubble-turn').click();
-    await page.locator('.menu-item', { hasText: 'Heading 1' }).click();
+    await page.getByRole('menuitem', { name: 'Heading 1', exact: true }).click();
     await expect(editor(page).locator('h1')).toHaveText('a heading');
   });
 

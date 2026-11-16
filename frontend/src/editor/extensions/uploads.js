@@ -45,6 +45,12 @@ function nodeFor(schema, attachment) {
   if (attachment.kind === 'image') {
     return schema.nodes.image.create({ attachmentId: attachment.id, alt: attachment.name });
   }
+  if (attachment.kind === 'video' || attachment.kind === 'audio') {
+    return schema.nodes[attachment.kind].create({
+      attachmentId: attachment.id,
+      name: attachment.name,
+    });
+  }
   return schema.nodes.attachment.create({
     attachmentId: attachment.id,
     name: attachment.name,
@@ -101,12 +107,19 @@ export function uploadFiles(editor, files, pos = null) {
   }
 }
 
-/** Open the system file picker, then upload the chosen files. */
-export function pickAndUploadFiles(editor, { imagesOnly }) {
+const PICKER_TYPES = {
+  image: IMAGE_EXTENSIONS,
+  video: ['mp4', 'm4v', 'mov', 'webm'],
+  audio: ['mp3', 'm4a', 'wav', 'ogg'],
+};
+
+/**
+ * Open the system file picker, then upload the chosen files.
+ * `kind`: "image" | "video" | "audio" | "any".
+ */
+export function pickAndUploadFiles(editor, { kind = 'any' } = {}) {
   const { limits } = options(editor);
-  const extensions = imagesOnly
-    ? IMAGE_EXTENSIONS
-    : (limits.upload_extensions ?? []).filter(Boolean);
+  const extensions = PICKER_TYPES[kind] ?? (limits.upload_extensions ?? []).filter(Boolean);
   const input = document.createElement('input');
   input.type = 'file';
   input.multiple = true;

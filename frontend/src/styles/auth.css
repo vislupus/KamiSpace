@@ -19,10 +19,7 @@
   letter-spacing: -0.01em;
 }
 .auth-brand .logo-mark {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  font-size: 15px;
+  flex: none;
 }
 .auth-card {
   padding: 24px;

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from alembic import command
@@ -119,6 +120,9 @@ def test_upgrade_from_the_first_release_keeps_existing_data(tmp_path, monkeypatc
         INSERT INTO pages (id, workspace_id, title, content, revision, position, owner_id,
                            created_at, updated_at)
         VALUES (1, 1, 'Kept page', '{"type": "doc"}', 3, 1, 1, '2026-01-01', '2026-01-01');
+        INSERT INTO pages (id, workspace_id, parent_id, title, content, revision, position,
+                           owner_id, created_at, updated_at)
+        VALUES (2, 1, 1, 'Existing child', '{"type": "doc"}', 1, 1, 1, '2026-01-01', '2026-01-01');
         INSERT INTO sessions (id, user_id, token_hash, csrf_token, created_at, last_seen_at,
                               expires_at)
         VALUES (1, 1, 'token', 'csrf', '2026-01-01', '2026-01-01', '2099-01-01');
@@ -137,8 +141,16 @@ def test_upgrade_from_the_first_release_keeps_existing_data(tmp_path, monkeypatc
         ]
         assert connection.execute(
             "SELECT title, revision, cover_position, font, small_text, full_width, locked "
-            "FROM pages"
-        ).fetchall() == [("Kept page", 3, 50, "default", 0, 0, 0)]
+            "FROM pages WHERE id = 1"
+        ).fetchall() == [("Kept page", 4, 50, "default", 0, 0, 0)]
+        # Sub-pages that already existed are now linked in their parent.
+        parent = json.loads(
+            connection.execute("SELECT content FROM pages WHERE id = 1").fetchone()[0]
+        )
+        assert parent["content"] == [
+            {"type": "pageLink", "attrs": {"pageId": 2}},
+            {"type": "paragraph"},
+        ]
         assert connection.execute("SELECT COUNT(*) FROM sessions").fetchone() == (1,)
         assert connection.execute("SELECT COUNT(*) FROM workspace_members").fetchone() == (1,)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []

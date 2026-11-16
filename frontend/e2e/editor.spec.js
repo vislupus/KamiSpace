@@ -198,15 +198,16 @@ test.describe('Slash commands', () => {
     await expect(menu.locator('.slash-item').first()).toHaveClass(/is-active/);
     expect(await menu.locator('.slash-item').count()).toBeGreaterThan(10);
 
-    await page.keyboard.type('head');
-    await expect(menu.locator('.slash-item')).toHaveCount(3);
+    await page.keyboard.type('heading');
+    // Headings first, then the toggle headings.
+    await expect(menu.locator('.slash-item')).toHaveCount(6);
     await page.keyboard.press('ArrowDown');
     await expect(menu.locator('.slash-item').nth(1)).toHaveClass(/is-active/);
     await page.keyboard.press('Enter');
     await expect(menu).toBeHidden();
     await page.keyboard.type('Section');
     await expect(editor(page).locator('h2')).toHaveText('Section');
-    await expect(editor(page)).not.toContainText('/head');
+    await expect(editor(page)).not.toContainText('/heading');
   });
 
   test('Escape dismisses the menu and keeps the text', async ({ page }) => {

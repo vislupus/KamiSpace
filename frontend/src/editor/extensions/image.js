@@ -70,6 +70,13 @@ export const ImageBlock = Node.create({
     ];
   },
 
+  // Markdown: ![alt](/api/files/<id>). Pictures are lifted out of paragraphs
+  // (and foreign addresses turned into links) in editor/markdown.js.
+  markdownTokenName: 'image',
+  parseMarkdown: (token) => ({ type: 'image', attrs: { src: token.href, alt: token.text } }),
+  renderMarkdown: (node) =>
+    `![${(node.attrs?.alt ?? '').replace(/[\[\]]/g, '')}](${fileUrl(node.attrs?.attachmentId)})`,
+
   addCommands() {
     return {
       setImageWidth:

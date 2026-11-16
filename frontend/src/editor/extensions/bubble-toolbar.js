@@ -4,8 +4,9 @@ import { AllSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state
 import { h, kbd } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 import { openMenu } from '../../lib/menu.js';
-import { positionElement } from '../../lib/popover.js';
+import { openPopover, positionElement } from '../../lib/popover.js';
 import { CONVERTIBLE_BLOCKS, applyBlock, currentBlockLabel } from '../blocks.js';
+import { COLORS } from './colors.js';
 import { openLinkEditor } from './link-editor.js';
 
 const MARKS = [
@@ -67,14 +68,37 @@ class BubbleToolbarView {
       openLinkEditor(editor);
     });
 
+    this.colorButton = h(
+      'button',
+      { class: 'bubble-button', type: 'button', title: 'Text and background colour', 'aria-label': 'Colour' },
+      icon('text-color', 15),
+    );
+    this.colorButton.addEventListener('click', () => this.openColors());
+    this.equationButton = h(
+      'button',
+      {
+        class: 'bubble-button',
+        type: 'button',
+        title: `Inline equation (${kbd('Mod+Shift+E')})`,
+        'aria-label': 'Inline equation',
+      },
+      icon('equation', 15),
+    );
+    this.equationButton.addEventListener('click', () => {
+      this.hide();
+      editor.chain().focus().setInlineEquation().run();
+    });
+
     this.el = h(
       'div',
       { class: 'popover bubble-toolbar', role: 'toolbar', 'aria-label': 'Formatting' },
       this.turnInto,
       h('span', { class: 'bubble-separator' }),
       this.buttons.map((entry) => entry.button),
+      this.colorButton,
       h('span', { class: 'bubble-separator' }),
       this.linkButton,
+      this.equationButton,
     );
     this.el.hidden = true;
     // Keep the text selection when pressing toolbar buttons.
@@ -129,6 +153,10 @@ class BubbleToolbarView {
       button.classList.toggle('is-on', this.editor.isActive(mark.name));
     }
     this.linkButton.classList.toggle('is-on', this.editor.isActive('link'));
+    this.colorButton.classList.toggle(
+      'is-on',
+      this.editor.isActive('textColor') || this.editor.isActive('highlight'),
+    );
     this.turnInto.firstChild.textContent = currentBlockLabel(this.editor);
     this.el.hidden = false;
     this.place();
@@ -173,6 +201,59 @@ class BubbleToolbarView {
         setTimeout(() => this.refresh(), 0);
       },
     });
+  }
+
+  openColors() {
+    if (this.menu) return;
+    const { editor } = this;
+    const swatch = (kind, color) => {
+      const active =
+        kind === 'text'
+          ? editor.isActive('textColor', color ? { color } : undefined) === Boolean(color) &&
+            (color ? true : !editor.isActive('textColor'))
+          : editor.isActive('highlight', color ? { color } : undefined) === Boolean(color) &&
+            (color ? true : !editor.isActive('highlight'));
+      const button = h(
+        'button',
+        {
+          class: `color-swatch${active ? ' is-on' : ''}`,
+          type: 'button',
+          title: color ? color[0].toUpperCase() + color.slice(1) : 'Default',
+          'aria-label': `${kind === 'text' ? 'Text' : 'Background'}: ${color ?? 'default'}`,
+          dataset: kind === 'text' ? { textColor: color ?? '' } : { highlight: color ?? '' },
+        },
+        kind === 'text' ? 'A' : '',
+      );
+      button.addEventListener('mousedown', (event) => event.preventDefault());
+      button.addEventListener('click', () => {
+        const chain = editor.chain().focus();
+        if (kind === 'text') (color ? chain.setTextColor(color) : chain.unsetTextColor()).run();
+        else (color ? chain.setHighlight(color) : chain.unsetHighlight()).run();
+        popover.close({ focus: false });
+      });
+      return button;
+    };
+    const row = (kind) =>
+      h('div', { class: 'color-row' }, swatch(kind, null), COLORS.map((color) => swatch(kind, color.id)));
+    const popover = openPopover({
+      anchor: this.colorButton,
+      placement: 'bottom-start',
+      className: 'color-popover',
+      restoreFocus: false,
+      content: h(
+        'div',
+        { class: 'color-picker' },
+        h('div', { class: 'menu-heading' }, 'Text colour'),
+        row('text'),
+        h('div', { class: 'menu-heading' }, 'Background'),
+        row('highlight'),
+      ),
+      onClose: () => {
+        this.menu = null;
+        setTimeout(() => this.refresh(), 0);
+      },
+    });
+    this.menu = popover;
   }
 
   update(view) {

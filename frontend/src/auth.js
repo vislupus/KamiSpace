@@ -5,6 +5,7 @@ import './styles/components.css';
 import './styles/auth.css';
 import { ApiError, request } from './lib/api.js';
 import { h } from './lib/dom.js';
+import { logoMark } from './lib/logo.js';
 
 const root = document.getElementById('auth');
 const mode = root.dataset.mode;
@@ -22,8 +23,8 @@ function field(label, attributes) {
 }
 
 function shell(title, subtitle, form, footer) {
-  root.replaceChildren(
-    h('div', { class: 'auth-brand' }, h('span', { class: 'logo-mark' }, 'M'), 'KamiSpace'),
+  const parts = [
+    h('div', { class: 'auth-brand' }, logoMark(28), 'KamiSpace'),
     h(
       'div',
       { class: 'auth-card' },
@@ -33,7 +34,9 @@ function shell(title, subtitle, form, footer) {
     ),
     footer ? h('p', { class: 'auth-foot' }, footer) : null,
     h('p', { class: 'auth-tagline' }, 'Your data. Your server. Your workspace.'),
-  );
+  ];
+  // replaceChildren() would print a null argument as the text "null".
+  root.replaceChildren(...parts.filter(Boolean));
 }
 
 async function submit(form, error, button, url, payload) {
@@ -50,8 +53,8 @@ async function submit(form, error, button, url, payload) {
 }
 
 function renderLogin(registrationOpen) {
-  const identifier = field('Username or email', {
-    name: 'identifier',
+  const username = field('Username', {
+    name: 'username',
     autocomplete: 'username',
     autocapitalize: 'none',
     spellcheck: false,
@@ -71,12 +74,12 @@ function renderLogin(registrationOpen) {
       onsubmit: (event) => {
         event.preventDefault();
         submit(form, error, button, '/api/auth/login', {
-          identifier: identifier.input.value,
+          username: username.input.value,
           password: password.input.value,
         });
       },
     },
-    identifier.el,
+    username.el,
     password.el,
     error,
     button,
@@ -87,7 +90,7 @@ function renderLogin(registrationOpen) {
     form,
     registrationOpen ? ['No account yet? ', h('a', { href: '/register' }, 'Create one')] : null,
   );
-  identifier.input.focus();
+  username.input.focus();
 }
 
 function renderRegister(status) {
@@ -102,20 +105,13 @@ function renderRegister(status) {
     );
     return;
   }
-  const name = field('Name', { name: 'name', autocomplete: 'name', required: false, autofocus: true });
   const username = field('Username', {
     name: 'username',
     autocomplete: 'username',
     autocapitalize: 'none',
     spellcheck: false,
     pattern: '[A-Za-z0-9._\\-]{2,64}',
-  });
-  const email = field('Email', {
-    name: 'email',
-    type: 'email',
-    autocomplete: 'email',
-    value: status.invite_email ?? '',
-    readOnly: Boolean(status.invite_email),
+    autofocus: true,
   });
   const password = field('Password', {
     name: 'password',
@@ -132,30 +128,28 @@ function renderRegister(status) {
       onsubmit: (event) => {
         event.preventDefault();
         submit(form, error, button, '/api/auth/register', {
-          display_name: name.input.value,
           username: username.input.value,
-          email: email.input.value,
           password: password.input.value,
           invite: invite || null,
         });
       },
     },
-    name.el,
     username.el,
-    email.el,
+    h('span', { class: 'field-hint' }, 'Letters, digits, dots, dashes and underscores.'),
     password.el,
     h('span', { class: 'field-hint' }, 'At least 8 characters.'),
     error,
     button,
   );
-  shell('Create your account', 'Join your team’s workspace.', form, [
+  shell('Create your account', 'Choose a username and a password.', form, [
     'Already have an account? ',
     h('a', { href: '/login' }, 'Sign in'),
   ]);
+  username.input.focus();
 }
 
 async function start() {
-  let status = { open: false, invite_valid: false, invite_email: null };
+  let status = { open: false, invite_valid: false };
   try {
     const invite = params.get('invite');
     const query = invite ? `?invite=${encodeURIComponent(invite)}` : '';

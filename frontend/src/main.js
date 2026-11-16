@@ -5,9 +5,9 @@ import './styles/components.css';
 import './styles/shell.css';
 import './styles/page.css';
 import './styles/editor.css';
-import { createPage } from './app/actions.js';
-import { openCapture } from './app/capture.js';
+import { createPage, setBeforeCreate } from './app/actions.js';
 import { mountHome } from './app/home.js';
+import { mountLibrary } from './app/library.js';
 import { openMoveDialog } from './app/move.js';
 import { mountPageView } from './app/page-view.js';
 import { addLeaveGuard, startRouter } from './app/router.js';
@@ -15,6 +15,7 @@ import { isSearchOpen, openSearch } from './app/search.js';
 import { openShareDialog } from './app/share.js';
 import { createSidebar } from './app/sidebar.js';
 import { loadBootstrap, on, personalWorkspace, refreshTree, store } from './app/store.js';
+import { mountTasks } from './app/tasks.js';
 import { mountTrash } from './app/trash.js';
 import { h, kbd, modKey, replace } from './lib/dom.js';
 import { icon } from './lib/icons.js';
@@ -64,6 +65,10 @@ function toggleFocusMode() {
   currentView?.focusEditor?.();
 }
 
+function newPage() {
+  return createPage({ workspaceId: personalWorkspace()?.id });
+}
+
 async function openSettings(section) {
   const module = await import('./app/settings.js');
   module.openSettings(section);
@@ -73,14 +78,18 @@ function openShortcuts() {
   const rows = [
     ['Search pages', 'Mod+K'],
     ['Link selected text', 'Mod+K'],
-    ['Quick capture', 'Alt+Shift+N'],
     ['New page', 'Alt+N'],
+    ['Link to a page', '@ or [['],
     ['Show / hide sidebar', 'Mod+\\'],
     ['Focus mode', 'Mod+Shift+F'],
     ['Block menu', '/'],
     ['Bold · Italic · Underline', 'Mod+B · I · U'],
     ['Strikethrough', 'Mod+Shift+S'],
     ['Inline code', 'Mod+E'],
+    ['Highlight', 'Mod+Shift+H'],
+    ['Inline equation', 'Mod+Shift+E or $$…$$'],
+    ['Toggle list', '>> + Space or Mod+Alt+7'],
+    ['Open / close a toggle', 'Mod+Enter'],
     ['Heading 1 – 3', 'Mod+Alt+1 – 3'],
     ['Move block up / down', 'Alt+Shift+↑ / ↓'],
     ['Duplicate block', 'Mod+D'],
@@ -104,7 +113,6 @@ const shell = {
   isFocusMode,
   toggleFocusMode,
   openSearch,
-  openCapture,
   openShare: openShareDialog,
   openMove: openMoveDialog,
   reloadPage: () => showRoute(currentRoute, { force: true }),
@@ -143,6 +151,11 @@ function showRoute(route, { force = false } = {}) {
     );
   } else if (route.name === 'trash') {
     currentView = mountTrash(context);
+  } else if (route.name === 'library') {
+    currentView = mountLibrary(context);
+    refreshTree().catch(() => {});
+  } else if (route.name === 'tasks') {
+    currentView = mountTasks(context);
   } else {
     currentView = mountHome(context);
     // Keep "recently opened" fresh when coming back home.
@@ -174,12 +187,9 @@ function onKeyDown(event) {
   } else if (mod && event.key === '/') {
     event.preventDefault();
     openShortcuts();
-  } else if (event.altKey && event.shiftKey && !mod && event.code === 'KeyN') {
-    event.preventDefault();
-    openCapture();
   } else if (event.altKey && !event.shiftKey && !mod && event.code === 'KeyN') {
     event.preventDefault();
-    createPage({ workspaceId: personalWorkspace()?.id });
+    newPage();
   }
 }
 
@@ -221,7 +231,7 @@ async function start() {
 
   sidebar = createSidebar({
     onSearch: openSearch,
-    onCapture: openCapture,
+    onNewPage: newPage,
     onSettings: openSettings,
     onShortcuts: openShortcuts,
     onToggle: toggleSidebar,
@@ -250,6 +260,7 @@ async function start() {
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keydown', onEscapeCapture, true);
   addLeaveGuard(() => currentView?.flush?.());
+  setBeforeCreate(async () => currentView?.flush?.());
   on('tree-stale', () => refreshTree().catch(() => {}));
   startRouter(showRoute);
 }

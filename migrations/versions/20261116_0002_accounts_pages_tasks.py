@@ -7,6 +7,8 @@ Create Date: 2026-11-16
 
 from __future__ import annotations
 
+import json
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -60,6 +62,57 @@ def upgrade() -> None:
     with op.batch_alter_table("tasks", schema=None) as batch_op:
         batch_op.create_index(batch_op.f("ix_tasks_assignee_id"), ["assignee_id"], unique=False)
         batch_op.create_index(batch_op.f("ix_tasks_page_id"), ["page_id"], unique=False)
+
+    _link_existing_sub_pages()
+
+
+def _linked_page_ids(node: object, found: set[int]) -> None:
+    if not isinstance(node, dict):
+        return
+    if node.get("type") in ("pageLink", "pageMention"):
+        page_id = (node.get("attrs") or {}).get("pageId")
+        if isinstance(page_id, int):
+            found.add(page_id)
+    for child in node.get("content") or []:
+        _linked_page_ids(child, found)
+
+
+def _link_existing_sub_pages() -> None:
+    """Sub-pages now appear as links in their parent; add them for existing pages."""
+    connection = op.get_bind()
+    children = connection.execute(
+        sa.text(
+            "SELECT c.id, c.parent_id FROM pages AS c JOIN pages AS p ON p.id = c.parent_id "
+            "WHERE c.deleted_at IS NULL AND p.deleted_at IS NULL "
+            "ORDER BY c.parent_id, c.position, c.id"
+        )
+    ).all()
+    by_parent: dict[int, list[int]] = {}
+    for child_id, parent_id in children:
+        by_parent.setdefault(parent_id, []).append(child_id)
+
+    for parent_id, child_ids in by_parent.items():
+        raw = connection.execute(
+            sa.text("SELECT content FROM pages WHERE id = :id"), {"id": parent_id}
+        ).scalar_one()
+        content = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        if not isinstance(content, dict):
+            continue
+        blocks = list(content.get("content") or [])
+        linked: set[int] = set()
+        _linked_page_ids(content, linked)
+        missing = [child_id for child_id in child_ids if child_id not in linked]
+        if not missing:
+            continue
+        links = [{"type": "pageLink", "attrs": {"pageId": child_id}} for child_id in missing]
+        if blocks and blocks[-1].get("type") == "paragraph" and not blocks[-1].get("content"):
+            blocks[-1:-1] = links
+        else:
+            blocks.extend([*links, {"type": "paragraph"}])
+        connection.execute(
+            sa.text("UPDATE pages SET content = :content, revision = revision + 1 WHERE id = :id"),
+            {"content": json.dumps({"type": "doc", "content": blocks}), "id": parent_id},
+        )
 
 
 def downgrade() -> None:

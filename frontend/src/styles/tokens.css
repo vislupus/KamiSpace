@@ -4,6 +4,8 @@
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI",
     Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji",
     "Segoe UI Emoji", "Noto Color Emoji";
+  --font-serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, "Times New Roman",
+    serif;
   --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", Menlo,
     monospace;
 
@@ -53,6 +55,26 @@
   --callout-danger: rgba(214, 54, 78, 0.09);
   --callout-note: rgba(24, 27, 33, 0.05);
 
+  /* Text colours and highlights (named in documents, valued here). */
+  --ink-gray: #787774;
+  --ink-brown: #9f6b53;
+  --ink-orange: #d9730d;
+  --ink-yellow: #b98900;
+  --ink-green: #448361;
+  --ink-blue: #337ea9;
+  --ink-purple: #9065b0;
+  --ink-pink: #c14c8a;
+  --ink-red: #d44c47;
+  --mark-gray: #ebeced;
+  --mark-brown: #f0e4dc;
+  --mark-orange: #fbe4cf;
+  --mark-yellow: #fbf0c4;
+  --mark-green: #dcefe2;
+  --mark-blue: #d9ebf7;
+  --mark-purple: #ebdff5;
+  --mark-pink: #f8dcea;
+  --mark-red: #fbdedb;
+
   --code-text: #24292f;
   --code-keyword: #cf222e;
   --code-string: #0a3069;
@@ -94,6 +116,25 @@
   --callout-warning: rgba(229, 169, 59, 0.14);
   --callout-danger: rgba(255, 111, 133, 0.13);
   --callout-note: rgba(255, 255, 255, 0.05);
+
+  --ink-gray: #9b9b9b;
+  --ink-brown: #ba856f;
+  --ink-orange: #e0884a;
+  --ink-yellow: #d6ab3c;
+  --ink-green: #5fae84;
+  --ink-blue: #5aa4d1;
+  --ink-purple: #a988cf;
+  --ink-pink: #d672a7;
+  --ink-red: #e56a65;
+  --mark-gray: #3a3d42;
+  --mark-brown: #4a3a32;
+  --mark-orange: #55391f;
+  --mark-yellow: #51431b;
+  --mark-green: #26433a;
+  --mark-blue: #213c50;
+  --mark-purple: #3c2f4d;
+  --mark-pink: #4d2a3d;
+  --mark-red: #542e2c;
 
   --code-text: #d7dae0;
   --code-keyword: #ff7b72;

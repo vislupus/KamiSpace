@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node, createAtomBlockMarkdownSpec, mergeAttributes } from '@tiptap/core';
 import { h } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 import { fileExtension, formatBytes } from '../../lib/util.js';
@@ -62,6 +62,21 @@ export const Attachment = Node.create({
       name,
     ];
   },
+
+  ...createAtomBlockMarkdownSpec({
+    nodeName: 'attachment',
+    requiredAttributes: ['attachmentId'],
+    allowedAttributes: ['attachmentId', 'name', 'size', 'mime'],
+    parseAttributes: (text) => {
+      const read = (key) => new RegExp(`${key}="([^"]*)"`).exec(text)?.[1] ?? null;
+      return {
+        attachmentId: read('attachmentId'),
+        name: read('name') ?? 'file',
+        size: Number(read('size')) || 0,
+        mime: read('mime') ?? '',
+      };
+    },
+  }),
 
   addNodeView() {
     return ({ node, getPos, editor }) => {

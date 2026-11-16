@@ -21,7 +21,7 @@ test.describe('Signing in', () => {
   test('wrong credentials show an error, correct ones open the workspace', async ({ page }) => {
     await page.goto('/p/999999');
     await expect(page).toHaveURL(/\/login\?next=/);
-    await page.getByLabel('Username or email').fill('alice');
+    await page.getByLabel('Username').fill('alice');
     await page.getByLabel('Password').fill('not my password');
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page.getByRole('alert')).toHaveText('Incorrect username or password');
@@ -40,23 +40,32 @@ test.describe('Signing in', () => {
     await expect(page.getByText('Create one')).toHaveCount(0);
   });
 
+  test('the sign-in page shows only what it needs', async ({ page }) => {
+    await page.goto('/login');
+    await expect(page.getByLabel('Username')).toBeVisible();
+    await expect(page.getByLabel('Password')).toBeVisible();
+    await expect(page.locator('input')).toHaveCount(2); // no email, no name
+    // Nothing stray is printed on the page (a missing footer used to show "null").
+    await expect(page.locator('#auth')).not.toContainText('null');
+    await expect(page.locator('.auth-brand')).toHaveText('KamiSpace');
+    await expect(page.locator('.auth-brand svg.logo-mark')).toBeVisible();
+    await expect(page).toHaveTitle('Sign in');
+  });
+
   test('an invitation link lets a new person create their account', async ({ page, browser }) => {
     const admin = await signIn(page, 'admin');
     const username = `guest${Date.now()}`;
-    const invite = await api(page, admin, 'POST', '/api/admin/invites', {
-      email: `${username}@example.com`,
-    });
+    const invite = await api(page, admin, 'POST', '/api/admin/invites', {});
 
     const context = await browser.newContext();
     const guestPage = await context.newPage();
     await guestPage.goto(invite.path);
-    await expect(guestPage.getByLabel('Email')).toHaveValue(`${username}@example.com`);
-    await guestPage.getByLabel('Name', { exact: true }).fill('Invited Guest');
+    await expect(guestPage.locator('input')).toHaveCount(2);
     await guestPage.getByLabel('Username').fill(username);
     await guestPage.getByLabel('Password').fill(PASSWORD);
     await guestPage.getByRole('button', { name: 'Create account' }).click();
     await expect(guestPage.locator('.sidebar')).toBeVisible();
-    await expect(guestPage.locator('.home-title')).toContainText('Invited');
+    await expect(guestPage.locator('.home-title')).toContainText(username);
 
     // The link works exactly once.
     const second = await browser.newContext();
@@ -260,19 +269,14 @@ test.describe('Pages and navigation', () => {
     await expect(page).toHaveURL(new RegExp(`/p/${first.id}$`));
   });
 
-  test('quick capture saves a note to the Inbox', async ({ page }) => {
+  test('"New page" in the sidebar starts a page in the private section', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.sidebar')).toBeVisible();
-    await page.keyboard.press('Alt+Shift+N');
-    const dialog = page.getByRole('dialog', { name: 'Quick capture' });
-    await dialog.getByLabel('Quick note').fill('Call the dentist\ntomorrow at nine');
-    await page.keyboard.press(`${mod}+Enter`);
-    await expect(dialog).toHaveCount(0);
-    await expect(page.locator('.toast')).toContainText('Saved to your Inbox');
-    await page.locator('.toast-action', { hasText: 'Open' }).click();
-    await expect(page.locator('.page-title')).toHaveValue('Call the dentist');
-    await expect(page.locator('.breadcrumbs')).toContainText('Inbox');
-    await expect(editor(page).locator('p')).toHaveText(['Call the dentist', 'tomorrow at nine']);
+    await expect(page.locator('.sidebar')).not.toContainText('Quick capture');
+    await page.locator('.sidebar-actions').getByRole('button', { name: /New page/ }).click();
+    await expect(page.locator('.page-title')).toBeFocused();
+    await page.keyboard.type('Fresh idea');
+    await expect(page.locator('.breadcrumbs .crumb')).toHaveText(['Private', 'Fresh idea']);
   });
 
   test('version history: preview and restore an earlier version', async ({ page }) => {
@@ -316,8 +320,8 @@ test.describe('Pages and navigation', () => {
     const dialog = page.getByRole('dialog', { name: /Share/ });
     await expect(dialog).toContainText('Private page');
     await dialog.getByLabel('Find people').fill('bob');
-    await dialog.locator('.share-suggestions .list-row', { hasText: 'Bob Builder' }).click();
-    const row = dialog.locator('.share-list .list-row', { hasText: 'Bob Builder' });
+    await dialog.locator('.share-suggestions .list-row', { hasText: 'bob' }).click();
+    const row = dialog.locator('.share-list .list-row', { hasText: 'bob' });
     await expect(row.getByLabel('Access level')).toHaveValue('viewer');
     await row.getByLabel('Access level').selectOption('editor');
 
@@ -492,9 +496,8 @@ test.describe('Administration', () => {
     await settings.getByRole('button', { name: 'Create user' }).click();
     const username = `carol${Date.now()}`;
     const form = page.getByRole('dialog', { name: 'Create user' });
-    await form.getByLabel('Name', { exact: true }).fill('Carol Chen');
+    await expect(form.locator('input:not([type="checkbox"])')).toHaveCount(2); // username + password
     await form.getByLabel('Username').fill(username);
-    await form.getByLabel('Email').fill(`${username}@example.com`);
     await form.getByLabel('Initial password').fill(PASSWORD);
     await form.getByRole('button', { name: 'Create user' }).click();
     await expect(settings.locator('tr', { hasText: username })).toContainText('Member');
@@ -505,8 +508,8 @@ test.describe('Administration', () => {
     await page.getByRole('dialog', { name: 'New team workspace' }).getByRole('textbox').fill(workspace);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     await settings.getByPlaceholder('Add a member by name…').fill(username);
-    await settings.locator('.share-suggestions .menu-item', { hasText: 'Carol Chen' }).click();
-    await expect(settings.locator('.list-row', { hasText: `@${username}` })).toBeVisible();
+    await settings.locator('.share-suggestions .menu-item', { hasText: username }).click();
+    await expect(settings.locator('.list-row', { hasText: username })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.locator('.tree-heading', { hasText: workspace })).toBeVisible();
 

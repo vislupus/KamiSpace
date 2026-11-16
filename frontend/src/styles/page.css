@@ -555,10 +555,77 @@ button.page-icon:hover {
   gap: 6px;
 }
 
-/* ---- Quick capture ----------------------------------------------------- */
-.capture-text {
-  min-height: 110px;
-  font-size: 14.5px;
+/* ---- Library and tasks --------------------------------------------------- */
+.library-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.library-toolbar .input {
+  flex: 1;
+  max-width: 320px;
+}
+.library-toolbar .muted {
+  margin-left: auto;
+  font-size: 12.5px;
+}
+.library-filters {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.library-row {
+  color: inherit;
+}
+.library-date {
+  flex: none;
+  font-size: 12.5px;
+}
+.library-star {
+  color: var(--accent);
+}
+.library-star .icon {
+  fill: currentColor;
+}
+.task-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.task-row.is-done .list-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+a.task-page:hover {
+  color: var(--accent);
+}
+
+/* ---- Cover repositioning ---------------------------------------------------- */
+.page-cover.is-repositioning {
+  cursor: ns-resize;
+  user-select: none;
+}
+.page-cover.is-repositioning img {
+  pointer-events: none;
+}
+.page-cover.is-repositioning .cover-actions {
+  opacity: 1;
+}
+.cover-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 5px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12.5px;
+  pointer-events: none;
 }
 
 @media (max-width: 860px) {

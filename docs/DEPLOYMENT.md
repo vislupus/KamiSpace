@@ -70,7 +70,7 @@ sudo chmod 600 /opt/kamispace/.env && sudo chmod 700 /opt/kamispace/data
 sudo -u kamispace uv run --frozen --no-dev python -m app create-admin
 ```
 
-You are asked for a username, an email address and a password. This also
+You are asked for a username and a password. This also
 creates the database (`data/database.sqlite3`) and applies all migrations.
 
 ## 6. Run as a service

@@ -1,6 +1,7 @@
 // Settings: account, appearance, workspaces and (for administrators) users,
 // invitations, backups and the audit log. Loaded on demand.
 import { api } from '../lib/api.js';
+import { copyText } from '../lib/clipboard.js';
 import { h, replace } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { openMenu } from '../lib/menu.js';
@@ -33,8 +34,14 @@ async function guarded(action, errorBox) {
 // -- Account -----------------------------------------------------------------
 
 function accountPane(pane) {
-  const name = field('Name', { value: store.user.display_name, maxLength: 120 });
-  const email = field('Email', { value: store.user.email, type: 'email' });
+  const username = field('Username', {
+    value: store.user.username,
+    maxLength: 64,
+    required: true,
+    autocapitalize: 'none',
+    spellcheck: false,
+    autocomplete: 'username',
+  });
   const profileError = formError();
   const profile = h(
     'form',
@@ -43,18 +50,23 @@ function accountPane(pane) {
       onsubmit: async (event) => {
         event.preventDefault();
         const user = await guarded(
-          () => api.patch('/api/account', { display_name: name.input.value, email: email.input.value }),
+          () => api.patch('/api/account', { username: username.input.value }),
           profileError,
         );
         if (user) {
           store.user = user;
-          toast('Profile updated', { type: 'success', duration: 2000 });
+          username.input.value = user.username;
+          await refreshTree();
+          toast('Username changed', { type: 'success', duration: 2500 });
         }
       },
     },
-    field('Username', { value: store.user.username, disabled: true }).el,
-    name.el,
-    email.el,
+    username.el,
+    h(
+      'span',
+      { class: 'field-hint' },
+      'This is the name you sign in with and the name others see. Letters, digits, dots, dashes and underscores.',
+    ),
     profileError,
     h('div', null, h('button', { class: 'button button-primary', type: 'submit' }, 'Save')),
   );
@@ -134,7 +146,7 @@ function accountPane(pane) {
 
   replace(
     pane,
-    h('h3', null, 'Profile'),
+    h('h3', null, 'Username'),
     profile,
     h('h3', null, 'Password'),
     password,
@@ -236,7 +248,7 @@ function memberPicker(onPick, excluded) {
                 },
               },
               icon('user-plus', 15),
-              h('span', { class: 'menu-label' }, `${user.display_name} (@${user.username})`),
+              h('span', { class: 'menu-label' }, user.username),
             ),
           )
         : h('div', { class: 'palette-empty' }, 'No matching people'),
@@ -327,7 +339,7 @@ function workspacesPane(pane) {
         current.map((member) => {
           const select = h(
             'select',
-            { class: 'select', disabled: !canManage, 'aria-label': `Role of ${member.display_name}` },
+            { class: 'select', disabled: !canManage, 'aria-label': `Role of ${member.username}` },
             h('option', { value: 'viewer' }, 'Viewer'),
             h('option', { value: 'editor' }, 'Editor'),
             h('option', { value: 'owner' }, 'Owner'),
@@ -346,8 +358,8 @@ function workspacesPane(pane) {
             h(
               'div',
               { class: 'list-main' },
-              h('div', { class: 'list-title' }, member.display_name),
-              h('div', { class: 'list-sub' }, `@${member.username}${member.is_active ? '' : ' · deactivated'}`),
+              h('div', { class: 'list-title' }, member.username),
+              member.is_active ? null : h('div', { class: 'list-sub' }, 'deactivated'),
             ),
             select,
             canManage
@@ -357,7 +369,7 @@ function workspacesPane(pane) {
                     class: 'icon-button',
                     type: 'button',
                     title: 'Remove from workspace',
-                    'aria-label': `Remove ${member.display_name}`,
+                    'aria-label': `Remove ${member.username}`,
                     onclick: () =>
                       apply(() => api.delete(`/api/workspaces/${workspace.id}/members/${member.user_id}`)),
                   },
@@ -501,7 +513,7 @@ function usersPane(pane) {
       h(
         'table',
         { class: 'table' },
-        h('thead', null, h('tr', null, ['Name', 'Email', 'Role', 'Last sign-in', ''].map((t) => h('th', null, t)))),
+        h('thead', null, h('tr', null, ['Username', 'Role', 'Last sign-in', ''].map((t) => h('th', null, t)))),
         h(
           'tbody',
           null,
@@ -509,8 +521,7 @@ function usersPane(pane) {
             h(
               'tr',
               null,
-              h('td', null, h('div', { class: 'list-title' }, user.display_name), h('div', { class: 'list-sub' }, `@${user.username}`)),
-              h('td', null, user.email),
+              h('td', null, h('div', { class: 'list-title' }, user.username)),
               h(
                 'td',
                 null,
@@ -536,7 +547,7 @@ function usersPane(pane) {
               h(
                 'div',
                 { class: 'list-main' },
-                h('div', { class: 'list-title' }, invite.email || 'Anyone with the link'),
+                h('div', { class: 'list-title' }, 'Invitation link'),
                 h('div', { class: 'list-sub' }, `Expires ${formatDate(invite.expires_at)}${invite.is_admin ? ' · administrator' : ''}`),
               ),
               h(
@@ -564,7 +575,7 @@ function usersPane(pane) {
     };
     const resetPassword = async () => {
       const password = await promptDialog({
-        title: `New password for ${user.display_name}`,
+        title: `New password for ${user.username}`,
         label: 'At least 8 characters. They will be signed out everywhere.',
         type: 'password',
         confirmLabel: 'Set password',
@@ -579,7 +590,7 @@ function usersPane(pane) {
         class: 'icon-button',
         type: 'button',
         title: 'Manage user',
-        'aria-label': `Manage ${user.display_name}`,
+        'aria-label': `Manage ${user.username}`,
         'aria-haspopup': 'menu',
       },
       icon('more', 16),
@@ -589,6 +600,18 @@ function usersPane(pane) {
         anchor: button,
         placement: 'bottom-end',
         items: [
+          {
+            label: 'Change username…',
+            icon: 'pencil',
+            onSelect: async () => {
+              const name = await promptDialog({
+                title: `New username for ${user.username}`,
+                value: user.username,
+                confirmLabel: 'Rename',
+              });
+              if (name) patch({ username: name });
+            },
+          },
           { label: 'Reset password…', icon: 'key', onSelect: resetPassword },
           {
             label: user.is_admin ? 'Remove administrator role' : 'Make administrator',
@@ -611,9 +634,7 @@ function usersPane(pane) {
   }
 
   function openCreateUser() {
-    const name = field('Name', { maxLength: 120 });
     const username = field('Username', { required: true, autocapitalize: 'none', spellcheck: false });
-    const email = field('Email', { type: 'email', required: true });
     const password = field('Initial password', { type: 'password', required: true, minLength: 8, autocomplete: 'new-password' });
     const admin = h('input', { type: 'checkbox' });
     const error = formError();
@@ -629,9 +650,7 @@ function usersPane(pane) {
             const created = await guarded(
               () =>
                 api.post('/api/admin/users', {
-                  display_name: name.input.value,
                   username: username.input.value,
-                  email: email.input.value,
                   password: password.input.value,
                   is_admin: admin.checked,
                 }),
@@ -639,15 +658,15 @@ function usersPane(pane) {
             );
             if (created) {
               modal.close();
-              toast(`Account for ${created.display_name} created`, { type: 'success' });
+              toast(`Account “${created.username}” created`, { type: 'success' });
+              await refreshTree();
               load();
             }
           },
         },
-        name.el,
         username.el,
-        email.el,
         password.el,
+        h('span', { class: 'field-hint' }, 'Tell them the username and password; they can change both later.'),
         h('label', { class: 'checkbox' }, admin, 'Administrator'),
         error,
         h(
@@ -661,15 +680,7 @@ function usersPane(pane) {
   }
 
   async function createInvite() {
-    const email = await promptDialog({
-      title: 'Invite someone',
-      label: 'Email address (optional — leave empty for a link anyone can use once)',
-      type: 'email',
-      confirmLabel: 'Create invitation link',
-      required: false,
-    });
-    if (email === null) return;
-    const invite = await guarded(() => api.post('/api/admin/invites', { email: email || null }));
+    const invite = await guarded(() => api.post('/api/admin/invites', {}));
     if (!invite) return;
     load();
     const link = `${location.origin}${invite.path}`;
@@ -677,7 +688,7 @@ function usersPane(pane) {
     openModal({
       title: 'Invitation link',
       content: [
-        h('p', { class: 'settings-desc' }, 'Send this link to the person you are inviting. It works once and expires in 7 days. It is only shown now.'),
+        h('p', { class: 'settings-desc' }, 'Send this link to the person you are inviting. They choose their own username and password. It works once, expires in 7 days and is only shown now.'),
         h(
           'div',
           { class: 'copy-field' },
@@ -689,12 +700,7 @@ function usersPane(pane) {
               type: 'button',
               onclick: async () => {
                 input.select();
-                try {
-                  await navigator.clipboard.writeText(link);
-                  toast('Link copied', { type: 'success', duration: 2000 });
-                } catch {
-                  // Selection is already made; the user can copy manually.
-                }
+                if (await copyText(link)) toast('Link copied', { type: 'success', duration: 2000 });
               },
             },
             icon('copy', 14),

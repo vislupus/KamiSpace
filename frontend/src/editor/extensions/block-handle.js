@@ -12,8 +12,31 @@ import { CONVERTIBLE_BLOCKS, applyBlock } from '../blocks.js';
 
 const HANDLE_HEIGHT = 24;
 const CENTERED_TYPES = new Set(['horizontalRule']);
-const TOP_ALIGNED_TYPES = new Set(['image', 'attachment', 'table', 'codeBlock']);
-const NOT_CONVERTIBLE = new Set(['image', 'attachment', 'table', 'horizontalRule']);
+const TOP_ALIGNED_TYPES = new Set([
+  'image',
+  'attachment',
+  'table',
+  'codeBlock',
+  'columns',
+  'embed',
+  'bookmark',
+  'video',
+  'audio',
+  'blockEquation',
+]);
+const NOT_CONVERTIBLE = new Set([
+  'image',
+  'attachment',
+  'table',
+  'horizontalRule',
+  'columns',
+  'embed',
+  'bookmark',
+  'video',
+  'audio',
+  'blockEquation',
+  'pageLink',
+]);
 
 class BlockHandleView {
   constructor(view, editor) {
@@ -266,6 +289,24 @@ class BlockHandleView {
           })),
         };
 
+    // Columns get their own layout actions.
+    const inColumns = (command) => () => {
+      editor.chain().setTextSelection(pos + 3).run();
+      editor.chain().focus()[command]().run();
+    };
+    const columnItems =
+      node.type.name === 'columns'
+        ? [
+            {
+              label: 'Add a column',
+              icon: 'column-add',
+              disabled: node.childCount >= 5,
+              onSelect: inColumns('addColumn'),
+            },
+            { label: 'Remove columns (keep content)', icon: 'rows', onSelect: inColumns('unsetColumns') },
+          ]
+        : [];
+
     this.menuOpen = true;
     this.grip.setAttribute('aria-expanded', 'true');
     openMenu({
@@ -273,6 +314,7 @@ class BlockHandleView {
       placement: 'bottom-start',
       items: [
         turnInto,
+        ...columnItems,
         {
           label: 'Duplicate',
           icon: 'copy',

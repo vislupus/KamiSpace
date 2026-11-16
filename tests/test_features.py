@@ -180,22 +180,31 @@ def test_tasks_respect_permissions_trash_and_lock(alice, bob, carol):
     page = alice.create_page("Private plan")
     alice.put(
         f"/api/pages/{page['id']}/content",
-        json={"content": task_doc(("task-1", "Secret task", bob.user_id, False)), "base_revision": 1},
+        json={
+            "content": task_doc(("task-1", "Secret task", bob.user_id, False)),
+            "base_revision": 1,
+        },
     )
     # Assigned, but the page was never shared with bob: nothing leaks.
     assert bob.get("/api/tasks").json() == []
     assert bob.bootstrap()["open_tasks"] == 0
-    assert bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code == 404
+    assert (
+        bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code == 404
+    )
 
     alice.put(f"/api/pages/{page['id']}/shares/{bob.user_id}", json={"role": "viewer"})
     listed = bob.get("/api/tasks").json()
     assert [t["can_toggle"] for t in listed] == [False]  # viewers see, but cannot tick
-    assert bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code == 403
+    assert (
+        bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code == 403
+    )
     assert carol.get("/api/tasks").json() == []
 
     alice.put(f"/api/pages/{page['id']}/shares/{bob.user_id}", json={"role": "editor"})
     alice.patch(f"/api/pages/{page['id']}", json={"locked": True})
-    assert bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code == 423
+    assert (
+        bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code == 423
+    )
     alice.patch(f"/api/pages/{page['id']}", json={"locked": False})
 
     alice.delete(f"/api/pages/{page['id']}")
@@ -208,7 +217,10 @@ def test_removing_a_task_from_the_page_removes_it_from_the_list(alice):
     page = alice.create_page("Todo")
     saved = alice.put(
         f"/api/pages/{page['id']}/content",
-        json={"content": task_doc(("task-1", "Temporary", alice.user_id, False)), "base_revision": 1},
+        json={
+            "content": task_doc(("task-1", "Temporary", alice.user_id, False)),
+            "base_revision": 1,
+        },
     ).json()
     assert len(alice.get("/api/tasks").json()) == 1
     alice.save({"id": page["id"], "revision": saved["revision"]}, "no tasks any more")

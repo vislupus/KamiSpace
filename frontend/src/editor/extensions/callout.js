@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node, createBlockMarkdownSpec, mergeAttributes } from '@tiptap/core';
 
 export const CALLOUT_VARIANTS = [
   { id: 'info', emoji: '💡', label: 'Info' },
@@ -46,6 +46,13 @@ export const Callout = Node.create({
       ['div', { class: 'callout-content' }, 0],
     ];
   },
+
+  ...createBlockMarkdownSpec({
+    nodeName: 'callout',
+    content: 'block',
+    defaultAttributes: { variant: 'info' },
+    allowedAttributes: ['variant'],
+  }),
 
   addCommands() {
     return {

@@ -22,6 +22,7 @@ import sql from 'highlight.js/lib/languages/sql';
 import typescript from 'highlight.js/lib/languages/typescript';
 import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
+import { copyText } from '../../lib/clipboard.js';
 import { h } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 
@@ -121,12 +122,9 @@ export const CodeBlock = CodeBlockLowlight.extend({
         editor.commands.focus();
       });
       copy.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(current.textContent);
+        if (await copyText(current.textContent)) {
           copy.replaceChildren(icon('check', 14));
           setTimeout(() => copy.replaceChildren(icon('copy', 14)), 1200);
-        } catch {
-          // Clipboard access can be denied; nothing to do.
         }
       });
 

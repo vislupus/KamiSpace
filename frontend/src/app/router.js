@@ -1,4 +1,4 @@
-// History-API router for the three in-app routes.
+// History-API router for the in-app routes.
 const guards = new Set();
 let handler = () => {};
 
@@ -6,6 +6,8 @@ export function parseRoute(pathname = location.pathname) {
   const page = pathname.match(/^\/p\/(\d+)\/?$/);
   if (page) return { name: 'page', pageId: Number(page[1]) };
   if (pathname === '/trash') return { name: 'trash' };
+  if (pathname === '/library') return { name: 'library' };
+  if (pathname === '/tasks') return { name: 'tasks' };
   return { name: 'home' };
 }
 
