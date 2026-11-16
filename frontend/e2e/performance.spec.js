@@ -9,7 +9,7 @@ const PNG_BYTES = Buffer.from(
 const text = (value) => ({ type: 'text', text: value });
 const para = (value) => ({ type: 'paragraph', content: [text(value)] });
 const SENTENCE =
-  'MindDock keeps every page on your own server, so long documents have to stay pleasant to edit. ';
+  'KamiSpace keeps every page on your own server, so long documents have to stay pleasant to edit. ';
 
 /** A long, varied document: ~600 top-level blocks of every expensive kind. */
 function longDocument(attachmentId) {

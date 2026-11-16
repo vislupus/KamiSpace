@@ -1,5 +1,5 @@
 [project]
-name = "minddock"
+name = "kamispace"
 version = "0.1.0"
 description = "Self-hosted knowledge and documentation workspace"
 readme = "README.md"

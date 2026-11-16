@@ -21,7 +21,7 @@ from app import __version__
 from app.config import get_settings
 from app.errors import NotFound, ValidationFailed
 
-BACKUP_NAME_RE = re.compile(r"^minddock-backup-\d{8}-\d{6}(-\d+)?\.zip$")
+BACKUP_NAME_RE = re.compile(r"^kamispace-backup-\d{8}-\d{6}(-\d+)?\.zip$")
 _UPLOAD_MEMBER_RE = re.compile(r"^uploads/[0-9a-f]{2}/[0-9a-f]{32}$")
 DB_MEMBER = "database.sqlite3"
 MANIFEST_MEMBER = "manifest.json"
@@ -55,7 +55,7 @@ def create_backup() -> Path:
     settings = get_settings()
     settings.ensure_directories()
     now = datetime.now(UTC)
-    base = f"minddock-backup-{now:%Y%m%d-%H%M%S}"
+    base = f"kamispace-backup-{now:%Y%m%d-%H%M%S}"
     target = settings.backups_dir / f"{base}.zip"
     counter = 1
     while target.exists():
@@ -135,7 +135,7 @@ def read_manifest(archive_path: Path) -> dict[str, Any]:
         with zipfile.ZipFile(archive_path) as archive:
             names = set(archive.namelist())
             if DB_MEMBER not in names or MANIFEST_MEMBER not in names:
-                raise ValidationFailed("Not a MindDock backup archive")
+                raise ValidationFailed("Not a KamiSpace backup archive")
             manifest = json.loads(archive.read(MANIFEST_MEMBER))
     except (zipfile.BadZipFile, json.JSONDecodeError, OSError) as exc:
         raise ValidationFailed(f"Cannot read backup archive: {exc}") from exc

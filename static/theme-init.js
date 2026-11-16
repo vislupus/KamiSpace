@@ -3,7 +3,7 @@
 (function () {
   var theme = 'system';
   try {
-    theme = localStorage.getItem('minddock.theme') || 'system';
+    theme = localStorage.getItem('kamispace.theme') || 'system';
   } catch (_) {}
   var dark =
     theme === 'dark' ||

@@ -1,8 +1,8 @@
-# MindDock
+# KamiSpace
 
 **Your data. Your server. Your workspace.**
 
-MindDock is a self-hosted knowledge and documentation workspace: a block editor
+KamiSpace is a self-hosted knowledge and documentation workspace: a block editor
 in the spirit of Notion, the Markdown typing speed of Obsidian, and nothing that
 leaves your own machine. One Python process, one SQLite file, one directory.
 
@@ -40,7 +40,7 @@ Further reading: [architecture and design decisions](docs/ARCHITECTURE.md) ·
 
 Requirements: [uv](https://docs.astral.sh/uv/). uv installs the right Python
 (3.12.11, pinned in `.python-version`) by itself. Node.js is **not** needed to
-run MindDock — the built frontend is part of the repository.
+run KamiSpace — the built frontend is part of the repository.
 
 ```bash
 uv sync
@@ -56,7 +56,7 @@ uv run python -m app run
 
 Open <http://127.0.0.1:8000> and sign in with the account you just created.
 
-`run` applies database migrations automatically. Everything MindDock stores —
+`run` applies database migrations automatically. Everything KamiSpace stores —
 database, uploads, backups, logs, temporary files — lives in `data/` inside the
 project directory.
 
@@ -126,7 +126,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ```bash
-git clone https://github.com/vislupus/MindDock.git /opt/minddock && cd /opt/minddock
+git clone https://github.com/vislupus/KamiSpace.git /opt/kamispace && cd /opt/kamispace
 ```
 
 ```bash
@@ -147,7 +147,7 @@ uv run --no-dev python -m app run
 
 Then put a reverse proxy with HTTPS in front of it and run it as a service:
 
-- `deploy/minddock.service` — systemd unit
+- `deploy/kamispace.service` — systemd unit
 - `deploy/nginx.conf.example` — nginx reverse proxy (HTTPS via certbot)
 - `deploy/Caddyfile.example` — Caddy alternative (automatic HTTPS)
 
@@ -156,21 +156,21 @@ and one process keeps things simple; requests are served from a thread pool.
 
 ## Configuration
 
-Settings are environment variables prefixed with `MINDDOCK_`, or lines in a
+Settings are environment variables prefixed with `KAMISPACE_`, or lines in a
 `.env` file in the project root. See [`.env.example`](.env.example) for the
 full, commented list. The most relevant ones:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MINDDOCK_ENV` | `development` | `production` hides API docs and caches the asset manifest |
-| `MINDDOCK_HOST` / `MINDDOCK_PORT` | `127.0.0.1` / `8000` | Listen address |
-| `MINDDOCK_DATA_DIR` | `data` | Where all persistent data lives (relative to the project) |
-| `MINDDOCK_ALLOWED_HOSTS` | *(any)* | Comma separated host names to accept |
-| `MINDDOCK_COOKIE_SECURE` | `auto` | `always` behind HTTPS |
-| `MINDDOCK_SESSION_IDLE_MINUTES` | `10080` | Sign out after inactivity (7 days) |
-| `MINDDOCK_SESSION_MAX_DAYS` | `30` | Absolute session lifetime |
-| `MINDDOCK_MAX_UPLOAD_MB` | `25` | Upload size limit |
-| `MINDDOCK_VERSION_INTERVAL_MINUTES` | `10` | How autosaves are grouped into versions |
+| `KAMISPACE_ENV` | `development` | `production` hides API docs and caches the asset manifest |
+| `KAMISPACE_HOST` / `KAMISPACE_PORT` | `127.0.0.1` / `8000` | Listen address |
+| `KAMISPACE_DATA_DIR` | `data` | Where all persistent data lives (relative to the project) |
+| `KAMISPACE_ALLOWED_HOSTS` | *(any)* | Comma separated host names to accept |
+| `KAMISPACE_COOKIE_SECURE` | `auto` | `always` behind HTTPS |
+| `KAMISPACE_SESSION_IDLE_MINUTES` | `10080` | Sign out after inactivity (7 days) |
+| `KAMISPACE_SESSION_MAX_DAYS` | `30` | Absolute session lifetime |
+| `KAMISPACE_MAX_UPLOAD_MB` | `25` | Upload size limit |
+| `KAMISPACE_VERSION_INTERVAL_MINUTES` | `10` | How autosaves are grouped into versions |
 
 There are no secrets to configure: sessions are random tokens stored (hashed)
 in the database, not signed cookies.
@@ -182,7 +182,7 @@ data/
 ├── database.sqlite3      SQLite database (plus -wal / -shm while running)
 ├── uploads/              attachment files under generated names
 ├── backups/              backup archives, and data replaced by a restore
-├── logs/minddock.log     application log (rotated)
+├── logs/kamispace.log     application log (rotated)
 └── temp/                 upload and backup scratch space
 ```
 
@@ -216,15 +216,15 @@ uv run python -m app backup
 Restoring replaces all current data, so it is done with the server stopped:
 
 ```bash
-sudo systemctl stop minddock
+sudo systemctl stop kamispace
 ```
 
 ```bash
-uv run python -m app restore data/backups/minddock-backup-20260101-030000.zip
+uv run python -m app restore data/backups/kamispace-backup-20260101-030000.zip
 ```
 
 ```bash
-sudo systemctl start minddock
+sudo systemctl start kamispace
 ```
 
 The data being replaced is not deleted: it is moved to

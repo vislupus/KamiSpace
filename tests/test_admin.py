@@ -29,7 +29,7 @@ def test_admin_endpoints_require_admin(alice):
         ("GET", "/api/admin/workspaces"),
         ("GET", "/api/admin/backups"),
         ("POST", "/api/admin/backups"),
-        ("GET", "/api/admin/backups/minddock-backup-20260101-000000.zip"),
+        ("GET", "/api/admin/backups/kamispace-backup-20260101-000000.zip"),
         ("GET", "/api/admin/audit"),
     ]:
         body = {} if method in ("POST", "PATCH", "PUT") else None
@@ -37,39 +37,36 @@ def test_admin_endpoints_require_admin(alice):
 
 
 def test_admin_creates_users(admin, client_factory):
-    response = admin.post(
-        "/api/admin/users",
-        json={
-            "username": "Dana",
-            "email": "Dana@Example.com",
-            "display_name": "Dana Scully",
-            "password": PASSWORD,
-        },
-    )
+    response = admin.post("/api/admin/users", json={"username": "Dana", "password": PASSWORD})
     assert response.status_code == 201
     created = response.json()
-    assert (created["username"], created["email"]) == ("dana", "dana@example.com")
+    assert created["username"] == "dana"
     assert created["is_admin"] is False
 
     dana = client_factory()
     assert dana.login("dana").status_code == 200
     assert [w["kind"] for w in dana.bootstrap()["workspaces"]] == ["personal"]
 
-    duplicate = admin.post(
-        "/api/admin/users",
-        json={"username": "dana", "email": "other@example.com", "password": PASSWORD},
-    )
+    duplicate = admin.post("/api/admin/users", json={"username": "dana", "password": PASSWORD})
     assert duplicate.status_code == 409
-    weak = admin.post(
-        "/api/admin/users",
-        json={"username": "weak", "email": "weak@example.com", "password": "123"},
-    )
+    weak = admin.post("/api/admin/users", json={"username": "weak", "password": "123"})
     assert weak.status_code == 422
-    bad_name = admin.post(
-        "/api/admin/users",
-        json={"username": "no spaces", "email": "x@example.com", "password": PASSWORD},
-    )
+    bad_name = admin.post("/api/admin/users", json={"username": "no spaces", "password": PASSWORD})
     assert bad_name.status_code == 422
+    with_email = admin.post(
+        "/api/admin/users",
+        json={"username": "erin", "password": PASSWORD, "email": "erin@example.com"},
+    )
+    assert with_email.status_code == 422  # there is no such field any more
+
+
+def test_admin_renames_a_user(admin, alice, client_factory):
+    response = admin.patch(f"/api/admin/users/{alice.user_id}", json={"username": "alicia"})
+    assert response.status_code == 200
+    assert response.json()["username"] == "alicia"
+    assert alice.get("/api/bootstrap").json()["user"]["username"] == "alicia"
+    clash = admin.patch(f"/api/admin/users/{alice.user_id}", json={"username": "admin"})
+    assert clash.status_code == 409
 
 
 def test_admin_resets_password_and_signs_user_out(admin, alice, client_factory):
@@ -158,7 +155,7 @@ def test_backup_contains_database_and_uploads(admin, alice):
 
 
 def test_backup_names_cannot_escape_the_backup_directory(admin):
-    for name in ("..%2Fdatabase.sqlite3", "database.sqlite3", "minddock-backup-x.zip"):
+    for name in ("..%2Fdatabase.sqlite3", "database.sqlite3", "kamispace-backup-x.zip"):
         assert admin.get(f"/api/admin/backups/{name}").status_code == 404
         assert admin.delete(f"/api/admin/backups/{name}").status_code == 404
 
@@ -216,7 +213,7 @@ def test_restore_rejects_foreign_archives(data_dir):
 
 
 def test_cli_creates_admin_and_resets_password(data_dir, app):
-    args = ["--username", "root", "--email", "root@example.com", "--password", PASSWORD]
+    args = ["--username", "root", "--password", PASSWORD]
     assert cli_main(["create-admin", *args]) == 0
     assert cli_main(["create-admin", *args]) == 1  # already exists
     client = ApiClient(app)

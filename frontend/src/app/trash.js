@@ -10,7 +10,7 @@ import { pagePath } from './router.js';
 import { on } from './store.js';
 
 export function mountTrash({ container, topbar }) {
-  document.title = 'Recycle bin · MindDock';
+  document.title = 'Recycle bin · KamiSpace';
   replace(topbar, h('nav', { class: 'breadcrumbs' }, h('span', { class: 'crumb' }, 'Recycle bin')));
   const list = h('div');
   const emptyButton = h(

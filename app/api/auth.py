@@ -54,14 +54,14 @@ def _start_session(request: Request, response: Response, db: Db, user) -> UserSe
 @router.post("/login")
 def login(body: LoginIn, request: Request, response: Response, db: Db) -> dict[str, Any]:
     ip = client_ip(request)
-    user = auth.authenticate(db, body.identifier, body.password, ip)
+    user = auth.authenticate(db, body.username, body.password, ip)
     if user is None:
         db.rollback()
         # Persist the failed attempt independently of this request's outcome.
         with session_scope() as attempts:
-            auth.register_failed_login(attempts, body.identifier.strip().lower(), ip)
+            auth.register_failed_login(attempts, body.username.strip().lower(), ip)
             audit.record(
-                attempts, "auth.login_failed", detail={"identifier": body.identifier[:64]}, ip=ip
+                attempts, "auth.login_failed", detail={"username": body.username[:64]}, ip=ip
             )
         raise Unauthorized("Incorrect username or password")
     session = _start_session(request, response, db, user)
@@ -85,7 +85,6 @@ def registration_status(db: Db, invite: str | None = None) -> dict[str, Any]:
     return {
         "open": bool(auth.get_app_settings(db)[auth.SETTING_ALLOW_REGISTRATION]),
         "invite_valid": found is not None,
-        "invite_email": found.email if found else None,
     }
 
 
@@ -94,9 +93,7 @@ def register(body: RegisterIn, request: Request, response: Response, db: Db) -> 
     user = auth.register(
         db,
         username=body.username,
-        email=body.email,
         password=body.password,
-        display_name=body.display_name,
         invite_token=body.invite,
     )
     session = _start_session(request, response, db, user)

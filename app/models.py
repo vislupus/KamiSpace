@@ -37,13 +37,9 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True)
-    email: Mapped[str] = mapped_column(String(254), unique=True)
-    display_name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(String(255))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Quick Capture target. Plain integer on purpose: the page may be purged.
-    inbox_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
@@ -71,7 +67,6 @@ class Invite(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
-    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -151,6 +146,14 @@ class Page(Base):
         ForeignKey("attachments.id", ondelete="SET NULL", name="fk_pages_cover"),
         nullable=True,
     )
+    # Vertical focus of the cover image, 0 (top) … 100 (bottom).
+    cover_position: Mapped[int] = mapped_column(Integer, default=50)
+    # Appearance & layout, shared by everyone who opens the page.
+    font: Mapped[str] = mapped_column(String(16), default="default")
+    small_text: Mapped[bool] = mapped_column(Boolean, default=False)
+    full_width: Mapped[bool] = mapped_column(Boolean, default=False)
+    # A locked page cannot be edited until somebody with edit rights unlocks it.
+    locked: Mapped[bool] = mapped_column(Boolean, default=False)
     content: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     # Incremented on every content save; the basis for optimistic concurrency.
     revision: Mapped[int] = mapped_column(Integer, default=1)
@@ -211,6 +214,30 @@ class PageVersion(Base):
     __table_args__ = (UniqueConstraint("page_id", "number", name="uq_page_version_number"),)
 
 
+class Task(Base):
+    """Index of the to-do items inside pages (rebuilt whenever a page is saved).
+
+    The document stays the source of truth; this table only makes "My tasks"
+    a cheap query.
+    """
+
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    page_id: Mapped[int] = mapped_column(ForeignKey("pages.id", ondelete="CASCADE"), index=True)
+    # Identifier of the to-do item inside the document (taskItem.attrs.taskId).
+    task_key: Mapped[str] = mapped_column(String(32))
+    text: Mapped[str] = mapped_column(String(500), default="")
+    checked: Mapped[bool] = mapped_column(Boolean, default=False)
+    assignee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    due: Mapped[str | None] = mapped_column(String(10), nullable=True)  # YYYY-MM-DD
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+    __table_args__ = (UniqueConstraint("page_id", "task_key", name="uq_task_key"),)
+
+
 class Attachment(Base):
     __tablename__ = "attachments"
 
@@ -220,7 +247,7 @@ class Attachment(Base):
     storage_name: Mapped[str] = mapped_column(String(80), unique=True)
     original_name: Mapped[str] = mapped_column(String(255))
     mime: Mapped[str] = mapped_column(String(120))
-    kind: Mapped[str] = mapped_column(String(16))  # image | pdf | file
+    kind: Mapped[str] = mapped_column(String(16))  # image | pdf | video | audio | file
     size: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64))
     uploader_id: Mapped[int | None] = mapped_column(

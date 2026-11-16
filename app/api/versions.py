@@ -36,7 +36,7 @@ def create_version(
         force_new=True,
     )
     db.commit()
-    return versions.serialize_version(version, access.user.display_name)
+    return versions.serialize_version(version, access.user.username)
 
 
 @router.get("/{version_id}")

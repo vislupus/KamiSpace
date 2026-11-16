@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 
 from app.db import utcnow
 from app.deps import AdminUser, Db, UserAccess, client_ip
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 @router.get("/users")
 def list_users(admin: AdminUser, db: Db) -> list[dict[str, Any]]:
-    rows = db.execute(select(User).order_by(func.lower(User.display_name))).scalars()
+    rows = db.execute(select(User).order_by(User.username)).scalars()
     return [auth.serialize_user(user, private=True) for user in rows]
 
 
@@ -36,9 +36,7 @@ def create_user(body: UserCreateIn, request: Request, admin: AdminUser, db: Db) 
     user = auth.create_user(
         db,
         username=body.username,
-        email=body.email,
         password=body.password,
-        display_name=body.display_name,
         is_admin=body.is_admin,
     )
     audit.record(
@@ -75,14 +73,8 @@ def update_user(
     ) == 0:
         raise Conflict("The last active administrator cannot be demoted or deactivated")
 
-    if "display_name" in changes:
-        user.display_name = auth.clean_display_name(changes["display_name"], user.username)
-    if "email" in changes:
-        email = auth.normalize_email(changes["email"])
-        taken = db.execute(select(User.id).where(User.email == email, User.id != user.id)).first()
-        if taken:
-            raise Conflict("This email address is already in use")
-        user.email = email
+    if "username" in changes:
+        auth.rename_user(db, user, changes["username"])
     if "is_admin" in changes:
         user.is_admin = changes["is_admin"]
     if "is_active" in changes:
@@ -126,7 +118,6 @@ def reset_password(
 def _serialize_invite(invite: Invite) -> dict[str, Any]:
     return {
         "id": invite.id,
-        "email": invite.email,
         "is_admin": invite.is_admin,
         "created_at": invite.created_at.isoformat(),
         "expires_at": invite.expires_at.isoformat(),
@@ -145,14 +136,14 @@ def list_invites(admin: AdminUser, db: Db) -> list[dict[str, Any]]:
 
 @router.post("/invites", status_code=201)
 def create_invite(body: InviteIn, request: Request, admin: AdminUser, db: Db) -> dict[str, Any]:
-    invite, token = auth.create_invite(db, admin, email=body.email, is_admin=body.is_admin)
+    invite, token = auth.create_invite(db, admin, is_admin=body.is_admin)
     audit.record(
         db,
         "invite.created",
         user=admin,
         target_type="invite",
         target_id=invite.id,
-        detail={"email": invite.email, "is_admin": invite.is_admin},
+        detail={"is_admin": invite.is_admin},
         ip=client_ip(request),
     )
     db.commit()
@@ -245,7 +236,7 @@ def audit_log(
     admin: AdminUser, db: Db, limit: int = Query(default=100, ge=1, le=500)
 ) -> list[dict[str, Any]]:
     rows = db.execute(
-        select(AuditEvent, User.display_name)
+        select(AuditEvent, User.username)
         .outerjoin(User, User.id == AuditEvent.user_id)
         .order_by(AuditEvent.id.desc())
         .limit(limit)

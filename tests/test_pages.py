@@ -16,7 +16,7 @@ def test_create_and_read_page(alice):
     assert page["role"] == "owner"
     assert page["revision"] == 1
     assert page["content"] == {"type": "doc", "content": [{"type": "paragraph"}]}
-    assert page["owner_name"] == "Alice"
+    assert page["owner_name"] == "alice"
     fetched = alice.get(f"/api/pages/{page['id']}").json()
     assert fetched["title"] == "Ideas"
     assert fetched["breadcrumbs"] == []
@@ -63,7 +63,7 @@ def test_save_content_increments_revision(alice):
     assert response.json()["revision"] == 2
     fetched = alice.get(f"/api/pages/{page['id']}").json()
     assert fetched["content"] == doc("hello world")
-    assert fetched["updated_by_name"] == "Alice"
+    assert fetched["updated_by_name"] == "alice"
 
 
 def test_saving_identical_content_is_a_no_op(alice):
@@ -128,7 +128,12 @@ def test_duplicate_copies_subtree(alice):
     copied_children = [p for p in pages.values() if p["parent_id"] == copy["id"]]
     assert [p["title"] for p in copied_children] == ["Chapter"]
     assert copied_children[0]["id"] != child["id"]
-    assert alice.get(f"/api/pages/{copy['id']}").json()["content"] == doc("root text")
+    # The copy links to its own copy of the sub-page, not to the original's.
+    assert alice.get(f"/api/pages/{copy['id']}").json()["content"]["content"] == [
+        {"type": "paragraph", "content": [{"type": "text", "text": "root text"}]},
+        {"type": "pageLink", "attrs": {"pageId": copied_children[0]["id"]}},
+        {"type": "paragraph"},
+    ]
     # The copy sits right after the original.
     ordered = sorted(
         (p for p in pages.values() if p["parent_id"] is None), key=lambda p: p["position"]
@@ -208,23 +213,3 @@ def test_recent_pages_are_most_recent_first(alice):
     alice.get(f"/api/pages/{b['id']}")
     alice.get(f"/api/pages/{a['id']}")
     assert alice.bootstrap()["recents"][:2] == [a["id"], b["id"]]
-
-
-def test_quick_capture_goes_to_personal_inbox(alice):
-    first = alice.post("/api/capture", json={"text": "Call the plumber\nbefore Friday"}).json()
-    second = alice.post("/api/capture", json={"text": "Second thought"}).json()
-    pages = tree(alice)
-    inbox = next(p for p in pages.values() if p["title"] == "Inbox")
-    assert pages[first["id"]]["parent_id"] == inbox["id"] == pages[second["id"]]["parent_id"]
-    assert first["title"] == "Call the plumber"
-    content = alice.get(f"/api/pages/{first['id']}").json()["content"]
-    assert content == doc("Call the plumber", "before Friday")
-
-
-def test_quick_capture_recreates_a_deleted_inbox(alice):
-    alice.post("/api/capture", json={"text": "one"})
-    inbox = next(p for p in tree(alice).values() if p["title"] == "Inbox")
-    alice.delete(f"/api/pages/{inbox['id']}")
-    alice.post("/api/capture", json={"text": "two"})
-    titles = sorted(p["title"] for p in tree(alice).values())
-    assert titles == ["Inbox", "two"]

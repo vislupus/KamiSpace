@@ -12,7 +12,14 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import utcnow
-from app.errors import Conflict, Forbidden, NotFound, PayloadTooLarge, ValidationFailed
+from app.errors import (
+    Conflict,
+    Forbidden,
+    Locked,
+    NotFound,
+    PayloadTooLarge,
+    ValidationFailed,
+)
 from app.models import (
     ROLE_EDITOR,
     ROLE_OWNER,
@@ -26,13 +33,14 @@ from app.models import (
     User,
     Workspace,
 )
-from app.services import files, search, versions
+from app.services import files, search, tasks, versions
 from app.services.document import (
     EMPTY_DOC,
+    append_page_link,
     extract_attachment_ids,
     extract_text,
+    remap_page_links,
     sanitize_document,
-    text_to_document,
 )
 from app.services.permissions import Access, PageNode, role_at_least
 
@@ -56,7 +64,7 @@ def user_names(db: Session, user_ids: set[int | None]) -> dict[int, str]:
     ids = {uid for uid in user_ids if uid is not None}
     if not ids:
         return {}
-    rows = db.execute(select(User.id, User.display_name).where(User.id.in_(ids))).all()
+    rows = db.execute(select(User.id, User.username).where(User.id.in_(ids))).all()
     return {uid: name for uid, name in rows}
 
 
@@ -176,6 +184,7 @@ def list_tree(db: Session, access: Access) -> list[dict[str, Any]]:
             Page.title,
             Page.icon,
             Page.position,
+            Page.updated_at,
         )
         .where(Page.workspace_id.in_(workspace_ids), Page.deleted_at.is_(None))
         .order_by(Page.position, Page.id)
@@ -202,6 +211,7 @@ def list_tree(db: Session, access: Access) -> list[dict[str, Any]]:
                 "title": row.title,
                 "icon": row.icon,
                 "position": row.position,
+                "updated_at": row.updated_at.isoformat(),
                 "role": roles[row.id],
                 # Reached through a share, shown under "Shared with me".
                 "shared": not is_member,
@@ -260,11 +270,12 @@ def create_page(
     title: str = "",
     icon: str | None = None,
     content: dict[str, Any] | None = None,
+    link_in_parent: bool = True,
 ) -> Page:
     user = access.user
     if parent_id is None and workspace_id is None:
         raise ValidationFailed("Either workspace_id or parent_id is required")
-    workspace_id, _parent = _check_destination(db, access, workspace_id or 0, parent_id)
+    workspace_id, parent = _check_destination(db, access, workspace_id or 0, parent_id)
     doc = sanitize_document(content) if content else copy.deepcopy(EMPTY_DOC)
     page = Page(
         workspace_id=workspace_id,
@@ -282,8 +293,21 @@ def create_page(
     files.link_attachments(db, access, page.id, extract_attachment_ids(doc))
     if content:
         versions.record_version(db, page, user)
+        tasks.sync_page(db, page)
     search.index_page(db, page)
+    if parent is not None and link_in_parent and not parent.locked:
+        _link_child(db, access, parent, page)
     return page
+
+
+def _link_child(db: Session, access: Access, parent: Page, child: Page) -> None:
+    """A new sub-page shows up as a link at the end of its parent page."""
+    parent.content = append_page_link(parent.content, child.id)
+    parent.revision += 1
+    parent.updated_at = utcnow()
+    parent.updated_by = access.user.id
+    db.flush()
+    versions.record_version(db, parent, access.user)
 
 
 def page_detail(db: Session, access: Access, page: Page) -> dict[str, Any]:
@@ -301,6 +325,11 @@ def page_detail(db: Session, access: Access, page: Page) -> dict[str, Any]:
         "title": page.title,
         "icon": page.icon,
         "cover_attachment_id": page.cover_attachment_id,
+        "cover_position": page.cover_position,
+        "font": page.font,
+        "small_text": page.small_text,
+        "full_width": page.full_width,
+        "locked": page.locked,
         "content": page.content,
         "revision": page.revision,
         "role": role,
@@ -327,6 +356,12 @@ def update_meta(
     """Update title / icon / cover. ``fields`` only holds what the client sent."""
     page = access.require_page(page_id, ROLE_EDITOR)
     user = access.user
+    # A locked page only accepts being unlocked.
+    if page.locked and set(fields) - {"locked"}:
+        raise Locked()
+    for name in ("cover_position", "font", "small_text", "full_width", "locked"):
+        if fields.get(name) is not None:
+            setattr(page, name, fields[name])
     title_changed = False
     if "title" in fields:
         new_title = clean_title(fields["title"])
@@ -350,6 +385,7 @@ def update_meta(
     page.updated_by = user.id
     if title_changed:
         versions.record_version(db, page, user)
+        db.flush()  # the index reads ancestor titles from the database
         _reindex_subtree(db, page)
     return page
 
@@ -378,6 +414,8 @@ def save_content(
     state stays available in the version history.
     """
     page = access.require_page(page_id, ROLE_EDITOR)
+    if page.locked:
+        raise Locked()
     user = access.user
     doc = sanitize_document(content)
     if len(json.dumps(doc, ensure_ascii=False).encode("utf-8")) > (
@@ -424,11 +462,14 @@ def save_content(
     # erase) the version it replaces.
     version = versions.record_version(db, page, user, force_new=stale or force)
     search.index_page(db, page)
+    tasks.sync_page(db, page)
     return page, version.number
 
 
 def restore_version(db: Session, access: Access, page_id: int, version_id: int) -> Page:
     page = access.require_page(page_id, ROLE_EDITOR)
+    if page.locked:
+        raise Locked()
     version = versions.get_version(db, page.id, version_id)
     # Stored snapshots were sanitised when saved; run them through again so a
     # restore can never reintroduce content an older release would have kept.
@@ -447,6 +488,7 @@ def restore_version(db: Session, access: Access, page_id: int, version_id: int) 
         force_new=True,
     )
     _reindex_subtree(db, page)
+    tasks.sync_page(db, page)
     return page
 
 
@@ -551,6 +593,10 @@ def duplicate_page(db: Session, access: Access, page_id: int) -> Page:
             title=title,
             icon=original.icon,
             cover_attachment_id=original.cover_attachment_id,
+            cover_position=original.cover_position,
+            font=original.font,
+            small_text=original.small_text,
+            full_width=original.full_width,
             content=copy.deepcopy(original.content),
             revision=1,
             position=position,
@@ -564,6 +610,7 @@ def duplicate_page(db: Session, access: Access, page_id: int) -> Page:
             attachment_ids.add(clone.cover_attachment_id)
         files.link_attachments(db, access, clone.id, attachment_ids)
         versions.record_version(db, clone, user)
+        tasks.sync_page(db, clone)
         return clone
 
     title = clean_title(f"{source.title or 'Untitled'} (copy)")
@@ -574,6 +621,7 @@ def duplicate_page(db: Session, access: Access, page_id: int) -> Page:
         root.position = _end_position(db, workspace_id, None)
 
     created = [root]
+    id_map = {source.id: root.id}
     queue: list[tuple[int, int]] = [(source.id, root.id)]
     while queue:
         original_id, clone_id = queue.pop(0)
@@ -583,13 +631,20 @@ def duplicate_page(db: Session, access: Access, page_id: int) -> Page:
             .order_by(Page.position, Page.id)
         ).scalars()
         for child in children:
-            if child.id in {c.id for c in created} or not access.can_view(child.id):
+            if child.id in id_map.values() or not access.can_view(child.id):
                 continue
             clone = copy_one(child, clone_id, child.title, child.position)
+            id_map[child.id] = clone.id
             created.append(clone)
             queue.append((child.id, clone.id))
             if len(created) > 2000:
                 raise ValidationFailed("This page has too many sub-pages to duplicate at once")
+    # Links between the copied pages should stay inside the copy.
+    for clone in created:
+        remapped = remap_page_links(clone.content, id_map)
+        if remapped != clone.content:
+            clone.content = remapped
+            versions.record_version(db, clone, user)
     db.flush()
     search.index_pages(db, created)
     return root
@@ -722,37 +777,6 @@ def empty_trash(db: Session, access: Access) -> tuple[int, list[Path]]:
         if db.get(Page, page_id) is not None:
             paths.extend(purge_pages(db, [page_id]))
     return len(purgeable), paths
-
-
-# -- quick capture -----------------------------------------------------------
-
-
-def capture(db: Session, access: Access, text_value: str) -> Page:
-    """Save a quick note as a new page under the user's personal Inbox."""
-    user = access.user
-    text_value = text_value.strip()
-    if not text_value:
-        raise ValidationFailed("Nothing to capture")
-    inbox = db.get(Page, user.inbox_page_id) if user.inbox_page_id else None
-    if inbox is None or inbox.deleted_at is not None or not access.can_edit(inbox.id):
-        inbox = create_page(
-            db,
-            access,
-            workspace_id=personal_workspace_id(db, user),
-            title="Inbox",
-            icon="📥",
-        )
-        user.inbox_page_id = inbox.id
-    first_line = next((line.strip() for line in text_value.splitlines() if line.strip()), "")
-    title = first_line if len(first_line) <= 80 else first_line[:77].rstrip() + "…"
-    return create_page(
-        db,
-        access,
-        workspace_id=inbox.workspace_id,
-        parent_id=inbox.id,
-        title=title,
-        content=text_to_document(text_value),
-    )
 
 
 def preview_text(page: Page, limit: int = 160) -> str:

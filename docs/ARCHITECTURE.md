@@ -1,6 +1,6 @@
 # Architecture and design decisions
 
-MindDock is deliberately small: one FastAPI process, one SQLite database, a
+KamiSpace is deliberately small: one FastAPI process, one SQLite database, a
 frontend without a framework. This document records the decisions that shape
 the code and why they were made.
 
@@ -66,7 +66,7 @@ only owners can move a page out of the place it inherits access from.
   nothing is written. The client then lets the user choose; a forced overwrite
   always creates a new version, so the losing side remains in the history.
 - Invariant: **the newest version equals the current content.** Autosaves by
-  the same author within `MINDDOCK_VERSION_INTERVAL_MINUTES` update that
+  the same author within `KAMISPACE_VERSION_INTERVAL_MINUTES` update that
   newest version in place; a different author, a pause, a named snapshot or a
   restore starts a new one. History therefore grows by editing sessions, not
   keystrokes, and restoring simply appends.
@@ -108,7 +108,7 @@ and 22 highlight.js grammars). The editor chunk is loaded on demand the first
 time a page is opened, and settings and version history are separate lazy
 chunks. Assets are content-hashed and served with immutable caching.
 
-The built bundle is committed so that installing MindDock needs only uv.
+The built bundle is committed so that installing KamiSpace needs only uv.
 
 ### Editor
 

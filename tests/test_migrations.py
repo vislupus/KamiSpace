@@ -25,6 +25,7 @@ EXPECTED_TABLES = {
     "pages",
     "page_permissions",
     "page_versions",
+    "tasks",
     "attachments",
     "page_attachments",
     "favorites",
@@ -50,7 +51,7 @@ def table_names() -> set[str]:
 
 
 def use_empty_database(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("MINDDOCK_DATA_DIR", str(tmp_path / "fresh"))
+    monkeypatch.setenv("KAMISPACE_DATA_DIR", str(tmp_path / "fresh"))
     reset_engine()
     get_settings.cache_clear()
 
@@ -97,3 +98,51 @@ def test_sqlite_is_configured_for_integrity(data_dir):
         assert connection.execute(text("PRAGMA foreign_keys")).scalar() == 1
         assert connection.execute(text("PRAGMA journal_mode")).scalar() == "wal"
         assert connection.execute(text("PRAGMA busy_timeout")).scalar() == 5000
+
+
+def test_upgrade_from_the_first_release_keeps_existing_data(tmp_path, monkeypatch):
+    """A database created by 0001 (with email and display name) upgrades in place."""
+    use_empty_database(tmp_path, monkeypatch)
+    get_settings().ensure_directories()
+    command.upgrade(alembic_config(), "0001")
+    connection = sqlite3.connect(get_settings().database_path)
+    connection.executescript(
+        """
+        INSERT INTO users (id, username, email, display_name, password_hash, is_admin, is_active,
+                           created_at, updated_at)
+        VALUES (1, 'admin', 'admin@example.com', 'Ada Admin', 'hash', 1, 1,
+                '2026-01-01', '2026-01-01');
+        INSERT INTO workspaces (id, name, kind, owner_id, created_at)
+        VALUES (1, 'Personal', 'personal', 1, '2026-01-01');
+        INSERT INTO workspace_members (workspace_id, user_id, role, created_at)
+        VALUES (1, 1, 'owner', '2026-01-01');
+        INSERT INTO pages (id, workspace_id, title, content, revision, position, owner_id,
+                           created_at, updated_at)
+        VALUES (1, 1, 'Kept page', '{"type": "doc"}', 3, 1, 1, '2026-01-01', '2026-01-01');
+        INSERT INTO sessions (id, user_id, token_hash, csrf_token, created_at, last_seen_at,
+                              expires_at)
+        VALUES (1, 1, 'token', 'csrf', '2026-01-01', '2026-01-01', '2099-01-01');
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    run_migrations()
+    connection = sqlite3.connect(get_settings().database_path)
+    try:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(users)")}
+        assert {"email", "display_name", "inbox_page_id"}.isdisjoint(columns)
+        assert connection.execute("SELECT username, is_admin FROM users").fetchall() == [
+            ("admin", 1)
+        ]
+        assert connection.execute(
+            "SELECT title, revision, cover_position, font, small_text, full_width, locked "
+            "FROM pages"
+        ).fetchall() == [("Kept page", 3, 50, "default", 0, 0, 0)]
+        assert connection.execute("SELECT COUNT(*) FROM sessions").fetchone() == (1,)
+        assert connection.execute("SELECT COUNT(*) FROM workspace_members").fetchone() == (1,)
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    finally:
+        connection.close()
+    reset_engine()
+    get_settings.cache_clear()

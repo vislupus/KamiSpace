@@ -386,7 +386,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
     if (title.value.includes('\n')) title.value = title.value.replace(/\n+/g, ' ');
     resizeTitle();
     page.title = title.value.trim();
-    document.title = `${page.title || 'Untitled'} · MindDock`;
+    document.title = `${page.title || 'Untitled'} · KamiSpace`;
     patchPage(page.id, { title: page.title });
     renderCrumbs();
     saveTitle();
@@ -485,7 +485,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
   renderCrumbs();
   renderStar();
   resizeTitle();
-  document.title = `${page.title || 'Untitled'} · MindDock`;
+  document.title = `${page.title || 'Untitled'} · KamiSpace`;
   // A new page starts at the top, without animating from the old position.
   container.scrollTo({ top: 0, behavior: 'instant' });
 

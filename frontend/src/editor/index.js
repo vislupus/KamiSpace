@@ -1,4 +1,4 @@
-// The MindDock block editor: Tiptap/ProseMirror configured with the block
+// The KamiSpace block editor: Tiptap/ProseMirror configured with the block
 // catalogue, Markdown input rules and the contextual controls. This module is
 // loaded lazily, so pages without an editor never pay for it.
 import { Editor } from '@tiptap/core';

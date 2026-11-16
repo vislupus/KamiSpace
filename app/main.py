@@ -21,7 +21,7 @@ from app.deps import SAFE_METHODS
 from app.errors import AppError
 from app.web import router as web_router
 
-logger = logging.getLogger("minddock")
+logger = logging.getLogger("kamispace")
 
 CONTENT_SECURITY_POLICY = "; ".join(
     [
@@ -32,7 +32,9 @@ CONTENT_SECURITY_POLICY = "; ".join(
         "img-src 'self' data: blob:",
         "font-src 'self'",
         "connect-src 'self'",
-        "frame-src 'self'",
+        # Embed blocks show other sites in sandboxed frames.
+        "frame-src 'self' https:",
+        "media-src 'self'",
         "object-src 'none'",
         "base-uri 'none'",
         "form-action 'self'",
@@ -43,14 +45,14 @@ CONTENT_SECURITY_POLICY = "; ".join(
 
 def configure_logging(settings: Settings) -> None:
     root = logging.getLogger()
-    if any(getattr(h, "_minddock", False) for h in root.handlers):
+    if any(getattr(h, "_kamispace", False) for h in root.handlers):
         return
     settings.logs_dir.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(
-        settings.logs_dir / "minddock.log", maxBytes=5_000_000, backupCount=5, encoding="utf-8"
+        settings.logs_dir / "kamispace.log", maxBytes=5_000_000, backupCount=5, encoding="utf-8"
     )
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-    handler._minddock = True  # type: ignore[attr-defined]
+    handler._kamispace = True  # type: ignore[attr-defined]
     root.addHandler(handler)
     root.setLevel(settings.log_level.upper())
 
@@ -76,7 +78,7 @@ def create_app() -> FastAPI:
     tempfile.tempdir = str(settings.temp_dir)
 
     app = FastAPI(
-        title="MindDock",
+        title="KamiSpace",
         version=__version__,
         docs_url=None if settings.is_production else "/api/docs",
         redoc_url=None,

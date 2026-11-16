@@ -23,7 +23,7 @@ import { closeAllPopovers, hasOpenPopover } from './lib/popover.js';
 import './lib/theme.js';
 import { storageGet, storageSet } from './lib/util.js';
 
-const SIDEBAR_KEY = 'minddock.sidebar';
+const SIDEBAR_KEY = 'kamispace.sidebar';
 const root = document.getElementById('app');
 const smallScreen = window.matchMedia('(max-width: 860px)');
 
@@ -210,7 +210,7 @@ async function start() {
           'div',
           { class: 'empty' },
           icon('offline', 28),
-          h('div', { class: 'empty-title' }, 'MindDock could not start'),
+          h('div', { class: 'empty-title' }, 'KamiSpace could not start'),
           h('div', null, error.message),
           h('button', { class: 'button', type: 'button', onclick: () => location.reload() }, 'Try again'),
         ),

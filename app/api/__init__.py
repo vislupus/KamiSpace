@@ -6,7 +6,9 @@ from app.api import (
     auth,
     files,
     pages,
+    remote,
     sharing,
+    tasks,
     trash,
     versions,
     workspace,
@@ -23,6 +25,8 @@ for module in (
     sharing,
     trash,
     files,
+    remote,
+    tasks,
     workspaces,
     admin,
 ):

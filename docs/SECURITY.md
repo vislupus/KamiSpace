@@ -1,6 +1,6 @@
 # Security notes
 
-What MindDock does to protect your notes, and what remains your job.
+What KamiSpace does to protect your notes, and what remains your job.
 
 ## Authentication and sessions
 
@@ -78,7 +78,7 @@ What MindDock does to protect your notes, and what remains your job.
 
 ## Your responsibilities
 
-- **Use HTTPS** and set `MINDDOCK_COOKIE_SECURE=always`.
+- **Use HTTPS** and set `KAMISPACE_COOKIE_SECURE=always`.
 - Keep the server and its `data/` directory private (`chmod 700 data`). The
   database and uploads are not encrypted at rest — use full-disk encryption if
   the machine could be stolen. Anyone with shell access to the server can read

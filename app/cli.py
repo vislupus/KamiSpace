@@ -63,17 +63,9 @@ def cmd_create_admin(args: argparse.Namespace) -> int:
 
     run_migrations()
     username = args.username or input("Username: ")
-    email = args.email or input("Email: ")
     password = _read_password(args)
     with session_scope() as db:
-        user = auth.create_user(
-            db,
-            username=username,
-            email=email,
-            password=password,
-            display_name=args.name or "",
-            is_admin=True,
-        )
+        user = auth.create_user(db, username=username, password=password, is_admin=True)
         print(f"Administrator '{user.username}' created.")
     return 0
 
@@ -110,7 +102,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
             raise AppError(f"Backup archive not found: {args.archive}")
         archive = candidate
     manifest = backups.read_manifest(archive)
-    print(f"Backup from {manifest.get('created_at')} (MindDock {manifest.get('app_version')}),")
+    print(f"Backup from {manifest.get('created_at')} (KamiSpace {manifest.get('app_version')}),")
     print(f"{manifest.get('upload_count')} uploaded files.")
     if not args.yes:
         print("\nThis replaces the current database and uploads. Stop the server first.")
@@ -126,7 +118,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m app", description="MindDock management")
+    parser = argparse.ArgumentParser(prog="python -m app", description="KamiSpace management")
     commands = parser.add_subparsers(dest="command", required=True)
 
     run = commands.add_parser("run", help="Start the web server")
@@ -145,8 +137,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     admin = commands.add_parser("create-admin", help="Create an administrator account")
     admin.add_argument("--username")
-    admin.add_argument("--email")
-    admin.add_argument("--name", help="Display name")
     admin.add_argument("--password", help="Avoid this on shared machines; omit to be prompted")
     admin.set_defaults(func=cmd_create_admin)
 

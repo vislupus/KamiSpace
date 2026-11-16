@@ -23,7 +23,7 @@ function field(label, attributes) {
 
 function shell(title, subtitle, form, footer) {
   root.replaceChildren(
-    h('div', { class: 'auth-brand' }, h('span', { class: 'logo-mark' }, 'M'), 'MindDock'),
+    h('div', { class: 'auth-brand' }, h('span', { class: 'logo-mark' }, 'M'), 'KamiSpace'),
     h(
       'div',
       { class: 'auth-card' },

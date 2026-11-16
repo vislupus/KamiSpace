@@ -30,7 +30,7 @@ import {
 } from './store.js';
 import { expandAll, isExpanded, setExpanded } from './tree-state.js';
 
-const DRAG_TYPE = 'application/x-minddock-page';
+const DRAG_TYPE = 'application/x-kamispace-page';
 
 export function createSidebar({
   onSearch,
@@ -52,7 +52,7 @@ export function createSidebar({
     'button',
     { class: 'workspace-button', type: 'button', 'aria-haspopup': 'menu' },
     h('span', { class: 'logo-mark' }, 'M'),
-    h('span', { class: 'workspace-name' }, 'MindDock'),
+    h('span', { class: 'workspace-name' }, 'KamiSpace'),
     icon('chevron-down', 14),
   );
   workspaceButton.addEventListener('click', () => {

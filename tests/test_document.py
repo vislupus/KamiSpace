@@ -113,10 +113,19 @@ def test_structure_is_preserved_for_supported_blocks():
         {
             "type": "taskList",
             "content": [
-                {"type": "taskItem", "attrs": {"checked": True}, "content": [para(text_node("a"))]},
                 {
                     "type": "taskItem",
-                    "attrs": {"checked": False},
+                    "attrs": {"checked": True, "taskId": "task-one", "assignee": 3, "due": None},
+                    "content": [para(text_node("a"))],
+                },
+                {
+                    "type": "taskItem",
+                    "attrs": {
+                        "checked": False,
+                        "taskId": "task-two",
+                        "assignee": None,
+                        "due": "2026-12-01",
+                    },
                     "content": [para(text_node("b"))],
                 },
             ],
@@ -191,3 +200,77 @@ def test_api_stores_only_sanitised_content(alice):
     stored = alice.get(f"/api/pages/{page['id']}").json()["content"]
     assert stored == wrap(para(text_node("x")))
     assert "javascript" not in str(stored)
+
+
+def test_rich_blocks_and_marks_survive_sanitising():
+    document = wrap(
+        {
+            "type": "details",
+            "attrs": {"open": True, "level": 2},
+            "content": [
+                {"type": "detailsSummary", "content": [text_node("Toggle heading")]},
+                {"type": "detailsContent", "content": [para(text_node("hidden"))]},
+            ],
+        },
+        {
+            "type": "columns",
+            "content": [
+                {"type": "column", "content": [para(text_node("left"))]},
+                {"type": "column", "content": [para(text_node("right"))]},
+            ],
+        },
+        {"type": "blockEquation", "attrs": {"latex": "E = mc^2"}},
+        para(
+            text_node("inline "),
+            {"type": "inlineEquation", "attrs": {"latex": "x^2"}},
+            {"type": "pageMention", "attrs": {"pageId": 7}},
+            text_node("red", {"type": "textColor", "attrs": {"color": "red"}}),
+            text_node("marked", {"type": "highlight", "attrs": {"color": "yellow"}}),
+        ),
+        {"type": "embed", "attrs": {"url": "https://example.com/video", "height": 420}},
+        {
+            "type": "bookmark",
+            "attrs": {"url": "https://example.com", "title": "Example", "description": None},
+        },
+        {"type": "video", "attrs": {"attachmentId": "ab" * 16, "name": "clip.mp4"}},
+        {"type": "audio", "attrs": {"attachmentId": "cd" * 16, "name": None}},
+        {"type": "pageLink", "attrs": {"pageId": 12}},
+        para(),
+    )
+    document["content"][-1] = {"type": "paragraph"}
+    assert sanitize_document(document) == document
+    assert extract_attachment_ids(document) == {"ab" * 16, "cd" * 16}
+    assert "E = mc^2" in extract_text(document)
+    assert "Toggle heading" in extract_text(document)
+
+
+def test_unsafe_variants_of_rich_blocks_are_dropped():
+    dirty = wrap(
+        {"type": "embed", "attrs": {"url": "javascript:alert(1)"}},
+        {"type": "embed", "attrs": {"url": "/api/files/x"}},
+        {"type": "bookmark", "attrs": {"url": "data:text/html,<script>"}},
+        {"type": "pageLink", "attrs": {"pageId": "12; drop"}},
+        {"type": "video", "attrs": {"attachmentId": "../../secret"}},
+        para(
+            text_node("a", {"type": "textColor", "attrs": {"color": "url(javascript:x)"}}),
+            text_node("b", {"type": "highlight", "attrs": {"color": "expression(1)"}}),
+            {"type": "pageMention", "attrs": {"pageId": -4}},
+        ),
+    )
+    assert sanitize_document(dirty) == wrap(para(text_node("a"), text_node("b")))
+
+
+def test_task_ids_are_assigned_and_kept_unique():
+    def item(task_id):
+        attrs = {"checked": False}
+        if task_id:
+            attrs["taskId"] = task_id
+        return {"type": "taskItem", "attrs": attrs, "content": [para(text_node("x"))]}
+
+    document = wrap({"type": "taskList", "content": [item("same-id"), item("same-id"), item(None)]})
+    cleaned = sanitize_document(document)
+    ids = [node["attrs"]["taskId"] for node in cleaned["content"][0]["content"]]
+    assert ids[0] == "same-id"
+    assert len(set(ids)) == 3 and all(ids)
+    # Sanitising again changes nothing: ids are stable once stored.
+    assert sanitize_document(cleaned) == cleaned

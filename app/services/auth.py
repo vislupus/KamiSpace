@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -32,7 +32,6 @@ from app.security import (
 )
 
 USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,62}[a-z0-9]$|^[a-z0-9]{2,3}$")
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 256
 SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
@@ -79,13 +78,6 @@ def normalize_username(username: str) -> str:
     return username
 
 
-def normalize_email(email: str) -> str:
-    email = email.strip().lower()
-    if len(email) > 254 or not EMAIL_RE.match(email):
-        raise ValidationFailed("Enter a valid email address")
-    return email
-
-
 def validate_password(password: str) -> None:
     if len(password) < MIN_PASSWORD_LENGTH:
         raise ValidationFailed(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
@@ -93,22 +85,13 @@ def validate_password(password: str) -> None:
         raise ValidationFailed("Password is too long")
 
 
-def clean_display_name(name: str, fallback: str) -> str:
-    return " ".join(name.split())[:120] or fallback
-
-
 # -- users -------------------------------------------------------------------
 
 
 def serialize_user(user: User, *, private: bool = False) -> dict[str, Any]:
-    data: dict[str, Any] = {
-        "id": user.id,
-        "username": user.username,
-        "display_name": user.display_name,
-    }
+    data: dict[str, Any] = {"id": user.id, "username": user.username}
     if private:
         data.update(
-            email=user.email,
             is_admin=user.is_admin,
             is_active=user.is_active,
             created_at=user.created_at.isoformat(),
@@ -117,32 +100,14 @@ def serialize_user(user: User, *, private: bool = False) -> dict[str, Any]:
     return data
 
 
-def create_user(
-    db: Session,
-    *,
-    username: str,
-    email: str,
-    password: str,
-    display_name: str = "",
-    is_admin: bool = False,
-) -> User:
+def create_user(db: Session, *, username: str, password: str, is_admin: bool = False) -> User:
     """Create an account together with its private personal workspace."""
     username = normalize_username(username)
-    email = normalize_email(email)
     validate_password(password)
-    taken = db.execute(
-        select(User.id).where(or_(User.username == username, User.email == email))
-    ).first()
-    if taken:
-        raise Conflict("A user with this username or email already exists")
+    if db.execute(select(User.id).where(User.username == username)).first():
+        raise Conflict("This username is already taken")
 
-    user = User(
-        username=username,
-        email=email,
-        display_name=clean_display_name(display_name, username),
-        password_hash=hash_password(password),
-        is_admin=is_admin,
-    )
+    user = User(username=username, password_hash=hash_password(password), is_admin=is_admin)
     db.add(user)
     db.flush()
     workspace = Workspace(name="Personal", kind=WORKSPACE_PERSONAL, owner_id=user.id)
@@ -153,13 +118,22 @@ def create_user(
     return user
 
 
-def find_user(db: Session, identifier: str) -> User | None:
-    identifier = identifier.strip().lower()
-    if not identifier:
+def rename_user(db: Session, user: User, username: str) -> None:
+    username = normalize_username(username)
+    if username == user.username:
+        return
+    taken = db.execute(select(User.id).where(User.username == username, User.id != user.id)).first()
+    if taken:
+        raise Conflict("This username is already taken")
+    user.username = username
+    db.flush()
+
+
+def find_user(db: Session, username: str) -> User | None:
+    username = username.strip().lower()
+    if not username:
         return None
-    return db.execute(
-        select(User).where(or_(User.username == identifier, User.email == identifier))
-    ).scalar_one_or_none()
+    return db.execute(select(User).where(User.username == username)).scalar_one_or_none()
 
 
 def set_password(
@@ -307,13 +281,10 @@ def list_sessions(db: Session, user: User, current_id: int) -> list[dict[str, An
 # -- invitations and registration -------------------------------------------
 
 
-def create_invite(
-    db: Session, admin: User, *, email: str | None, is_admin: bool = False
-) -> tuple[Invite, str]:
+def create_invite(db: Session, admin: User, *, is_admin: bool = False) -> tuple[Invite, str]:
     token = new_token()
     invite = Invite(
         token_hash=hash_token(token),
-        email=normalize_email(email) if email else None,
         is_admin=is_admin,
         created_by=admin.id,
         expires_at=utcnow() + timedelta(days=INVITE_VALID_DAYS),
@@ -334,15 +305,7 @@ def find_valid_invite(db: Session, token: str | None) -> Invite | None:
     return invite
 
 
-def register(
-    db: Session,
-    *,
-    username: str,
-    email: str,
-    password: str,
-    display_name: str,
-    invite_token: str | None,
-) -> User:
+def register(db: Session, *, username: str, password: str, invite_token: str | None) -> User:
     """Self-service sign-up: needs a valid invitation unless registration is open."""
     invite = find_valid_invite(db, invite_token)
     if invite is None:
@@ -350,15 +313,8 @@ def register(
             raise Forbidden("This invitation is no longer valid")
         if not get_app_settings(db)[SETTING_ALLOW_REGISTRATION]:
             raise Forbidden("Registration is disabled. Ask an administrator for an invitation.")
-    if invite is not None and invite.email and normalize_email(email) != invite.email:
-        raise ValidationFailed("This invitation was issued for a different email address")
     user = create_user(
-        db,
-        username=username,
-        email=email,
-        password=password,
-        display_name=display_name,
-        is_admin=bool(invite and invite.is_admin),
+        db, username=username, password=password, is_admin=bool(invite and invite.is_admin)
     )
     if invite is not None:
         invite.used_at = utcnow()

@@ -536,11 +536,11 @@ test.describe('Administration', () => {
     const settings = page.getByRole('dialog', { name: 'Settings' });
     await settings.getByRole('button', { name: 'Backups' }).click();
     await settings.getByRole('button', { name: 'Create backup' }).click();
-    const row = settings.locator('.list-row', { hasText: 'minddock-backup-' }).first();
+    const row = settings.locator('.list-row', { hasText: 'kamispace-backup-' }).first();
     await expect(row).toBeVisible();
     const downloadPromise = page.waitForEvent('download');
     await row.getByRole('link', { name: 'Download' }).click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/^minddock-backup-\d{8}-\d{6}.*\.zip$/);
+    expect(download.suggestedFilename()).toMatch(/^kamispace-backup-\d{8}-\d{6}.*\.zip$/);
   });
 });

@@ -201,7 +201,7 @@ function appearancePane(pane) {
   replace(
     pane,
     h('h3', null, 'Theme'),
-    h('p', { class: 'settings-desc' }, 'Choose how MindDock looks on this device.'),
+    h('p', { class: 'settings-desc' }, 'Choose how KamiSpace looks on this device.'),
     group,
   );
 }

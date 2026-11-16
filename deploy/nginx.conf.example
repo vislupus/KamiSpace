@@ -1,7 +1,7 @@
-# nginx reverse proxy for MindDock with HTTPS.
+# nginx reverse proxy for KamiSpace with HTTPS.
 #
-#   sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/minddock
-#   sudo ln -s /etc/nginx/sites-available/minddock /etc/nginx/sites-enabled/
+#   sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/kamispace
+#   sudo ln -s /etc/nginx/sites-available/kamispace /etc/nginx/sites-enabled/
 #   sudo certbot --nginx -d notes.example.com      # obtains and installs a certificate
 #   sudo nginx -t && sudo systemctl reload nginx
 #
@@ -23,7 +23,7 @@ server {
     ssl_certificate     /etc/letsencrypt/live/notes.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/notes.example.com/privkey.pem;
 
-    # Must be at least MINDDOCK_MAX_UPLOAD_MB (default 25), plus a little room.
+    # Must be at least KAMISPACE_MAX_UPLOAD_MB (default 25), plus a little room.
     client_max_body_size 30m;
 
     gzip on;

@@ -25,7 +25,7 @@ function card(page) {
 }
 
 export function mountHome({ container, topbar, shell }) {
-  document.title = 'MindDock';
+  document.title = 'KamiSpace';
   replace(topbar, h('nav', { class: 'breadcrumbs' }, h('span', { class: 'crumb' }, 'Home')));
 
   function render() {
