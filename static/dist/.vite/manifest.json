@@ -101,7 +101,7 @@
     "isDynamicEntry": true
   },
   "src/app/history.js": {
-    "file": "assets/history-O7Bw7PC2.js",
+    "file": "assets/history-BIIg7Koy.js",
     "name": "history",
     "src": "src/app/history.js",
     "isDynamicEntry": true,
@@ -111,7 +111,7 @@
     ]
   },
   "src/app/settings.js": {
-    "file": "assets/settings-B2vAswpe.js",
+    "file": "assets/settings-BYkgFYWN.js",
     "name": "settings",
     "src": "src/app/settings.js",
     "isDynamicEntry": true,
@@ -133,7 +133,7 @@
     ]
   },
   "src/editor/index.js": {
-    "file": "assets/editor-CRDAZbQ3.js",
+    "file": "assets/editor-qNIeHS1C.js",
     "name": "editor",
     "src": "src/editor/index.js",
     "isDynamicEntry": true,
@@ -146,7 +146,7 @@
     ]
   },
   "src/main.js": {
-    "file": "assets/main-C7lcup8Q.js",
+    "file": "assets/main-orekmWJH.js",
     "name": "main",
     "src": "src/main.js",
     "isEntry": true,

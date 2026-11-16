@@ -136,7 +136,7 @@ export async function insertSubPage(editor, title = '') {
   context.openPage(page.id);
 }
 
-function mentionItems(editor, query) {
+function mentionItems(editor, query, { canCreate }) {
   const context = appContext(editor);
   const needle = query.trim().toLowerCase();
   const pages = context
@@ -150,19 +150,23 @@ function mentionItems(editor, query) {
     })
     .slice(0, 8)
     .map((page) => ({ id: `page-${page.id}`, kind: 'page', page }));
-  if (needle) pages.push({ id: 'create', kind: 'create', title: query.trim() });
+  if (needle && canCreate) pages.push({ id: 'create', kind: 'create', title: query.trim() });
   return pages;
 }
 
 function mentionSuggestion(editor, char, pluginKey) {
+  const isAt = char === '@';
   return Suggestion({
     editor,
     pluginKey,
     char,
-    allowSpaces: true,
-    allowedPrefixes: char === '@' ? [' ', '('] : null,
+    // "@" is common in ordinary text, so its menu is deliberately modest: it
+    // ends at the first space and never offers to create a page. "[[" is an
+    // explicit request for a link: titles with spaces, and "create" as well.
+    allowSpaces: !isAt,
+    allowedPrefixes: isAt ? [' ', '('] : null,
     allow: ({ state, range }) => !state.doc.resolve(range.from).parent.type.spec.code,
-    items: ({ query }) => mentionItems(editor, query),
+    items: ({ query }) => mentionItems(editor, query, { canCreate: !isAt }),
     command: ({ editor: target, range, props: item }) => {
       if (item.kind === 'create') {
         target.chain().focus().deleteRange(range).run();
@@ -188,7 +192,7 @@ function mentionSuggestion(editor, char, pluginKey) {
     },
     render: createSuggestionRenderer({
       className: 'mention-menu',
-      emptyText: 'No pages found — keep typing to create one',
+      emptyText: 'No pages found',
       onEscape: (view) => exitSuggestion(view, pluginKey),
       renderItem: (item) =>
         item.kind === 'create'

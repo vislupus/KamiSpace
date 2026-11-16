@@ -295,20 +295,21 @@ test.describe('Links between pages', () => {
   test('"@" mentions another page; the mention follows renames', async ({ page }) => {
     const stamp = Date.now();
     const target = await api(page, session, 'POST', '/api/pages', {
-      title: `Roadmap ${stamp}`,
+      title: `Roadmap${stamp} plan`,
       icon: '🧭',
       workspace_id: await personalWorkspaceId(page),
     });
     const source = await openNewPage(page, session, { title: 'Notes' });
     await focusEditor(page);
-    await page.keyboard.type(`See @Roadmap ${stamp}`);
+    await page.keyboard.type(`See @Roadmap${stamp}`);
     const menu = page.locator('.mention-menu');
-    await expect(menu.locator('.slash-item').first()).toContainText(`Roadmap ${stamp}`);
+    await expect(menu.locator('.slash-item')).toHaveCount(1); // found, and no "create" offer
+    await expect(menu.locator('.slash-item').first()).toContainText(`Roadmap${stamp} plan`);
     await page.keyboard.press('Enter');
     await page.keyboard.type('for the plan');
 
     const mention = editor(page).locator('.page-mention');
-    await expect(mention).toHaveText(`🧭Roadmap ${stamp}`);
+    await expect(mention).toHaveText(`🧭Roadmap${stamp} plan`);
     await expect(editor(page).locator('p').first()).toContainText('for the plan');
     await waitForSaved(page);
     const stored = await storedContent(page, source.id);
@@ -319,6 +320,24 @@ test.describe('Links between pages', () => {
     await expect(editor(page).locator('.page-mention')).toContainText('Renamed roadmap');
     await editor(page).locator('.page-mention').click();
     await expect(page).toHaveURL(new RegExp(`/p/${target.id}$`));
+  });
+
+  test('an "@" in ordinary text does not get in the way', async ({ page }) => {
+    await openNewPage(page, session, { title: 'Plain text' });
+    await focusEditor(page);
+    await page.keyboard.type('Meet @ 5pm, mail me at someone@example.com');
+    await expect(page.locator('.mention-menu')).toBeHidden();
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('@nosuchpagehere');
+    await expect(page.locator('.mention-menu')).toContainText('No pages found');
+    await page.keyboard.press('Enter'); // just a new line; nothing is created
+    await page.keyboard.type('next line');
+    await expect(editor(page).locator('p')).toHaveText([
+      'Meet @ 5pm, mail me at someone@example.com',
+      '@nosuchpagehere',
+      'next line',
+    ]);
+    await expect(editor(page).locator('.page-mention')).toHaveCount(0);
   });
 
   test('"[[" works too, and can create the page it names', async ({ page }) => {

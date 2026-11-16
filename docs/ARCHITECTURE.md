@@ -113,9 +113,9 @@ which manages its own DOM and gains nothing from a virtual DOM around it.
 The rest (sidebar tree, dialogs, menus) is a few hundred lines of direct DOM
 code on top of four small primitives: `h()`, popover, menu, modal.
 
-Measured bundle (minified / gzip): application shell about 80 kB / 27 kB, CSS
-48 kB / 11 kB, editor chunk about 760 kB / 235 kB (ProseMirror, Tiptap, tables,
-Markdown and 22 highlight.js grammars). The editor chunk is loaded on demand
+Measured bundle (minified / gzip): application shell 80 kB / 27 kB, CSS
+47 kB / 11 kB, editor chunk 724 kB / 226 kB (ProseMirror, Tiptap, tables,
+Markdown and 22 highlight.js grammars), KaTeX 259 kB / 78 kB plus its fonts. The editor chunk is loaded on demand
 the first time a page is opened; settings, version history and KaTeX (script,
 styles and woff2 fonts, only when a page contains an equation) are separate
 lazy chunks. Assets are content-hashed and served with immutable caching.

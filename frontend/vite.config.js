@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => ({
     target: 'es2022',
     sourcemap: mode === 'development',
     minify: mode !== 'development',
-    chunkSizeWarningLimit: 700,
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       input: {
         main: resolve(import.meta.dirname, 'src/main.js'),
