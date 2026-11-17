@@ -240,3 +240,5 @@ frontend/playwright-report/
 # The built frontend bundle IS committed so that running KamiSpace needs no
 # Node.js. The generic "dist/" rule above would otherwise hide it.
 !/static/dist/
+
+*.md
