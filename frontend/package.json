@@ -1,5 +1,5 @@
 {
-  "name": "minddock-frontend",
+  "name": "kamispace-frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -11,13 +11,16 @@
   "dependencies": {
     "@tiptap/core": "^3.34.0",
     "@tiptap/extension-code-block-lowlight": "^3.34.0",
+    "@tiptap/extension-details": "^3.34.0",
     "@tiptap/extension-list": "^3.34.0",
     "@tiptap/extension-table": "^3.34.0",
     "@tiptap/extensions": "^3.34.0",
+    "@tiptap/markdown": "^3.34.0",
     "@tiptap/pm": "^3.34.0",
     "@tiptap/starter-kit": "^3.34.0",
     "@tiptap/suggestion": "^3.34.0",
     "highlight.js": "^11.11.1",
+    "katex": "^0.19.1",
     "lowlight": "^3.3.0",
     "lucide": "^1.72.0"
   },

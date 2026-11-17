@@ -2,6 +2,7 @@
 import { h, kbd, replace } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { createPage } from './actions.js';
+import { importMarkdown } from './import.js';
 import { pagePath } from './router.js';
 import { ancestorsOf, getPage, on, pageTitle, personalWorkspace, store } from './store.js';
 
@@ -25,19 +26,18 @@ function card(page) {
 }
 
 export function mountHome({ container, topbar, shell }) {
-  document.title = 'MindDock';
+  document.title = 'KamiSpace';
   replace(topbar, h('nav', { class: 'breadcrumbs' }, h('span', { class: 'crumb' }, 'Home')));
 
   function render() {
     const recents = store.recents.map(getPage).filter(Boolean).slice(0, 8);
     const favorites = store.favorites.map(getPage).filter(Boolean);
-    const firstName = store.user.display_name.split(' ')[0];
     replace(
       container,
       h(
         'div',
         { class: 'home' },
-        h('h1', { class: 'home-title' }, `${greeting()}, ${firstName}`),
+        h('h1', { class: 'home-title' }, `${greeting()}, ${store.user.username}`),
         h('p', { class: 'home-sub' }, 'Pick up where you left off, or start something new.'),
         h(
           'div',
@@ -54,9 +54,13 @@ export function mountHome({ container, topbar, shell }) {
           ),
           h(
             'button',
-            { class: 'button', type: 'button', onclick: shell.openCapture },
-            icon('zap', 15),
-            'Quick capture',
+            {
+              class: 'button',
+              type: 'button',
+              onclick: () => importMarkdown({ workspaceId: personalWorkspace()?.id }),
+            },
+            icon('file-up', 15),
+            'Import Markdown',
           ),
           h(
             'button',

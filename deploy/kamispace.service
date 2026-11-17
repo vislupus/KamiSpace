@@ -1,23 +1,23 @@
-# systemd unit for MindDock.
+# systemd unit for KamiSpace.
 #
-#   sudo cp deploy/minddock.service /etc/systemd/system/minddock.service
+#   sudo cp deploy/kamispace.service /etc/systemd/system/kamispace.service
 #   sudo systemctl daemon-reload
-#   sudo systemctl enable --now minddock
+#   sudo systemctl enable --now kamispace
 #
 # Adjust User, WorkingDirectory and the path to uv to match your installation.
 
 [Unit]
-Description=MindDock knowledge workspace
+Description=KamiSpace knowledge workspace
 After=network.target
 
 [Service]
 Type=simple
-User=minddock
-Group=minddock
-WorkingDirectory=/opt/minddock
-Environment=MINDDOCK_ENV=production
-Environment=UV_CACHE_DIR=/opt/minddock/.uv-cache
-Environment=UV_PYTHON_INSTALL_DIR=/opt/minddock/.python
+User=kamispace
+Group=kamispace
+WorkingDirectory=/opt/kamispace
+Environment=KAMISPACE_ENV=production
+Environment=UV_CACHE_DIR=/opt/kamispace/.uv-cache
+Environment=UV_PYTHON_INSTALL_DIR=/opt/kamispace/.python
 # --frozen: use exactly the versions in uv.lock; --no-dev: skip test tooling.
 ExecStart=/usr/local/bin/uv run --frozen --no-dev python -m app run
 Restart=on-failure
@@ -28,7 +28,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/minddock
+ReadWritePaths=/opt/kamispace
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import NotFound, ValidationFailed
@@ -40,14 +40,13 @@ def list_shares(db: Session, access: Access, page: Page) -> dict[str, Any]:
         .join(User, User.id == PagePermission.user_id)
         .join(Page, Page.id == PagePermission.page_id)
         .where(PagePermission.page_id.in_(chain_ids))
-        .order_by(func.lower(User.display_name))
+        .order_by(User.username)
     ).all()
     direct, inherited = [], []
     for grant, user, source_title in rows:
         entry = {
             "user_id": user.id,
             "username": user.username,
-            "display_name": user.display_name,
             "role": grant.role,
         }
         if grant.page_id == page.id:
@@ -112,22 +111,12 @@ def remove_share(db: Session, access: Access, page_id: int, user_id: int) -> Non
     db.flush()
 
 
-def user_directory(db: Session, query: str, limit: int = 12) -> list[dict[str, Any]]:
-    """Active colleagues matching a name, for the share and member pickers."""
+def user_directory(db: Session, query: str = "", limit: int = 500) -> list[dict[str, Any]]:
+    """Active colleagues, for the share, member and assignee pickers."""
     statement = select(User).where(User.is_active)
     query = query.strip().lower()
     if query:
-        # Names only: matching on email would let anyone probe addresses.
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        like = f"%{escaped}%"
-        statement = statement.where(
-            or_(
-                func.lower(User.display_name).like(like, escape="\\"),
-                User.username.like(like, escape="\\"),
-            )
-        )
-    rows = db.execute(statement.order_by(func.lower(User.display_name)).limit(limit)).scalars()
-    return [
-        {"id": user.id, "username": user.username, "display_name": user.display_name}
-        for user in rows
-    ]
+        statement = statement.where(User.username.like(f"%{escaped}%", escape="\\"))
+    rows = db.execute(statement.order_by(User.username).limit(limit)).scalars()
+    return [{"id": user.id, "username": user.username} for user in rows]

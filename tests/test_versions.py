@@ -38,7 +38,7 @@ def test_autosaves_are_folded_into_one_version(alice):
     history = versions_of(alice, page["id"])
     assert len(history) == 1
     assert history[0]["number"] == 1
-    assert history[0]["author_name"] == "Alice"
+    assert history[0]["author_name"] == "alice"
     detail = alice.get(f"/api/pages/{page['id']}/versions/{history[0]['id']}").json()
     assert detail["content"] == doc("hello")
 
@@ -60,7 +60,7 @@ def test_a_different_author_starts_a_new_version(alice, bob):
     first = save(alice, page["id"], "by alice", 1).json()
     save(bob, page["id"], "by bob", first["revision"])
     history = versions_of(alice, page["id"])
-    assert [(v["number"], v["author_name"]) for v in history] == [(2, "Bob"), (1, "Alice")]
+    assert [(v["number"], v["author_name"]) for v in history] == [(2, "bob"), (1, "alice")]
 
 
 def test_manual_snapshot_with_description(alice):
@@ -148,7 +148,7 @@ def test_stale_save_is_rejected_with_conflict(alice, client_factory):
     error = conflict.json()["error"]
     assert error["code"] == "conflict"
     assert error["current_revision"] == 2
-    assert error["updated_by_name"] == "Alice"
+    assert error["updated_by_name"] == "alice"
     # Nothing was overwritten.
     assert alice.get(f"/api/pages/{page['id']}").json()["content"] == doc("from tab one")
 
@@ -159,7 +159,7 @@ def test_concurrent_editors_conflict(alice, bob):
     assert save(bob, page["id"], "bob was first", 1).status_code == 200
     conflict = save(alice, page["id"], "alice is late", 1)
     assert conflict.status_code == 409
-    assert conflict.json()["error"]["updated_by_name"] == "Bob"
+    assert conflict.json()["error"]["updated_by_name"] == "bob"
 
 
 def test_forced_overwrite_keeps_the_other_version_in_history(alice, client_factory):

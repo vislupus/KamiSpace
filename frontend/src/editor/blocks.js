@@ -1,9 +1,14 @@
 // The block catalogue. Slash commands, the "+" button and the "Turn into"
 // menu are all generated from this list — adding a block type means adding an
-// entry here (plus its Tiptap extension).
+// entry here (plus its Tiptap extension and the server's allow-list).
 import { wrapSelectionIn } from './block-ops.js';
-import { pickAndUploadFiles } from './extensions/uploads.js';
+import { promptForBookmark } from './extensions/bookmark.js';
+import { promptForEmbed } from './extensions/embed.js';
 import { openLinkEditor } from './extensions/link-editor.js';
+import { insertSubPage } from './extensions/page-link.js';
+import { pickAndUploadFiles } from './extensions/uploads.js';
+
+const CONTAINERS = ['bulletList', 'orderedList', 'taskList', 'blockquote', 'callout', 'details'];
 
 /**
  * id          slash command name (/id)
@@ -24,10 +29,7 @@ export const BLOCKS = [
     reset: true,
     apply: (chain) => chain.setParagraph(),
     isActive: (editor) =>
-      editor.isActive('paragraph') &&
-      !['bulletList', 'orderedList', 'taskList', 'blockquote', 'callout'].some((name) =>
-        editor.isActive(name),
-      ),
+      editor.isActive('paragraph') && !CONTAINERS.some((name) => editor.isActive(name)),
   },
   ...[1, 2, 3].map((level) => ({
     id: `h${level}`,
@@ -68,14 +70,37 @@ export const BLOCKS = [
   {
     id: 'todo',
     title: 'To-do list',
-    description: 'Checklist with checkboxes',
+    description: 'Tasks you can tick, assign and date',
     icon: 'list-todo',
     hint: '[]',
-    keywords: ['todo', 'task', 'checklist', 'checkbox', 'check'],
+    keywords: ['todo', 'task', 'checklist', 'checkbox', 'check', 'assign'],
     convert: true,
     apply: (chain) => chain.toggleTaskList(),
     isActive: (editor) => editor.isActive('taskList'),
   },
+  {
+    id: 'toggle',
+    title: 'Toggle list',
+    description: 'Hide and show content',
+    icon: 'toggle',
+    hint: '>>',
+    keywords: ['toggle', 'collapse', 'expand', 'details', 'fold', 'accordion'],
+    convert: true,
+    toggle: true,
+    apply: (chain) => chain.setToggle(0),
+    isActive: (editor) => editor.isActive('details', { level: 0 }),
+  },
+  ...[1, 2, 3].map((level) => ({
+    id: `toggleh${level}`,
+    title: `Toggle heading ${level}`,
+    description: 'A heading that hides its content',
+    icon: `h${level}`,
+    keywords: ['toggle', 'collapse', 'heading', `toggle${level}`, 'fold'],
+    convert: true,
+    toggle: true,
+    apply: (chain) => chain.setToggle(level),
+    isActive: (editor) => editor.isActive('details', { level }),
+  })),
   {
     id: 'quote',
     title: 'Quote',
@@ -123,8 +148,33 @@ export const BLOCKS = [
     title: 'Table',
     description: '3 × 3 table with a header row',
     icon: 'table',
-    keywords: ['grid', 'rows', 'columns'],
+    keywords: ['grid', 'rows'],
     apply: (chain) => chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }),
+  },
+  ...[2, 3, 4].map((count) => ({
+    id: `columns${count}`,
+    title: `${count} columns`,
+    description: 'Blocks side by side',
+    icon: 'columns-2',
+    keywords: ['columns', 'column', 'layout', 'side', `${count}columns`, 'col'],
+    apply: (chain) => chain.insertColumns(count),
+  })),
+  {
+    id: 'page',
+    title: 'Page',
+    description: 'New sub-page, linked here',
+    icon: 'file-text',
+    keywords: ['subpage', 'sub-page', 'child', 'new', 'nested'],
+    action: (editor) => insertSubPage(editor),
+  },
+  {
+    id: 'linkpage',
+    title: 'Link to page',
+    description: 'Mention another page (or type @)',
+    icon: 'at',
+    hint: '@',
+    keywords: ['mention', 'reference', 'backlink', 'pagelink', 'link'],
+    action: (editor) => editor.chain().focus().insertContent('@').run(),
   },
   {
     id: 'image',
@@ -132,7 +182,23 @@ export const BLOCKS = [
     description: 'Upload a picture',
     icon: 'image',
     keywords: ['picture', 'photo', 'screenshot', 'img'],
-    action: (editor) => pickAndUploadFiles(editor, { imagesOnly: true }),
+    action: (editor) => pickAndUploadFiles(editor, { kind: 'image' }),
+  },
+  {
+    id: 'video',
+    title: 'Video',
+    description: 'Upload a video file',
+    icon: 'video',
+    keywords: ['movie', 'mp4', 'film', 'clip'],
+    action: (editor) => pickAndUploadFiles(editor, { kind: 'video' }),
+  },
+  {
+    id: 'audio',
+    title: 'Audio',
+    description: 'Upload a sound file',
+    icon: 'audio',
+    keywords: ['sound', 'music', 'mp3', 'recording', 'podcast'],
+    action: (editor) => pickAndUploadFiles(editor, { kind: 'audio' }),
   },
   {
     id: 'file',
@@ -140,7 +206,40 @@ export const BLOCKS = [
     description: 'Attach a PDF or document',
     icon: 'paperclip',
     keywords: ['attachment', 'upload', 'pdf', 'document'],
-    action: (editor) => pickAndUploadFiles(editor, { imagesOnly: false }),
+    action: (editor) => pickAndUploadFiles(editor, { kind: 'any' }),
+  },
+  {
+    id: 'embed',
+    title: 'Embed',
+    description: 'Web page, YouTube or Vimeo',
+    icon: 'embed',
+    keywords: ['iframe', 'website', 'youtube', 'vimeo', 'web', 'frame'],
+    action: (editor) => promptForEmbed(editor),
+  },
+  {
+    id: 'bookmark',
+    title: 'Web bookmark',
+    description: 'Link card with title and description',
+    icon: 'bookmark',
+    keywords: ['bookmark', 'link', 'preview', 'card', 'url', 'website'],
+    action: (editor) => promptForBookmark(editor),
+  },
+  {
+    id: 'equation',
+    title: 'Block equation',
+    description: 'Display math (KaTeX)',
+    icon: 'equation',
+    keywords: ['math', 'latex', 'tex', 'formula', 'katex', 'equation'],
+    apply: (chain) => chain.insertBlockEquation(),
+  },
+  {
+    id: 'inlineequation',
+    title: 'Inline equation',
+    description: 'Math inside a sentence',
+    icon: 'equation',
+    hint: '$$…$$',
+    keywords: ['math', 'latex', 'tex', 'formula', 'katex', 'inline'],
+    apply: (chain) => chain.setInlineEquation(),
   },
   {
     id: 'link',
@@ -165,7 +264,11 @@ export function applyBlock(editor, block) {
     return;
   }
   let chain = editor.chain().focus();
-  if (block.reset) chain = chain.clearNodes();
+  // Leaving a toggle for another block type: its summary becomes plain text first.
+  if (block.convert && !block.toggle && editor.isActive('detailsSummary')) {
+    chain = chain.unsetDetails();
+  }
+  if (block.reset || (block.toggle && !editor.isActive('details'))) chain = chain.clearNodes();
   block.apply(chain).run();
 }
 

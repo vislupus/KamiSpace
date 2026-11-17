@@ -91,7 +91,7 @@ def test_disallowed_or_mismatched_files_are_rejected(alice, name, data):
 
 
 def test_upload_size_limit(alice, monkeypatch):
-    monkeypatch.setenv("MINDDOCK_MAX_UPLOAD_MB", "1")
+    monkeypatch.setenv("KAMISPACE_MAX_UPLOAD_MB", "1")
     get_settings.cache_clear()
     page = alice.create_page("Uploads")
     too_big = PNG_BYTES + b"\x00" * (1024 * 1024)

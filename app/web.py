@@ -89,12 +89,14 @@ def register_page(request: Request, session: OptionalSession) -> Response:
 @router.get("/", response_class=HTMLResponse)
 @router.get("/p/{page_id}", response_class=HTMLResponse)
 @router.get("/trash", response_class=HTMLResponse)
+@router.get("/library", response_class=HTMLResponse)
+@router.get("/tasks", response_class=HTMLResponse)
 def app_shell(request: Request, session: OptionalSession) -> Response:
     if session is None:
         target = request.url.path
         suffix = f"?next={target}" if target != "/" else ""
         return RedirectResponse(f"/login{suffix}", status_code=303)
-    return _render(request, "app.html", "src/main.js", title="MindDock")
+    return _render(request, "app.html", "src/main.js", title="KamiSpace")
 
 
 @router.get("/healthz")

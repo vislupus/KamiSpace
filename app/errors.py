@@ -57,3 +57,11 @@ class TooManyRequests(AppError):
 class PayloadTooLarge(AppError):
     status_code = 413
     code = "too_large"
+
+
+class Locked(AppError):
+    status_code = 423
+    code = "locked"
+
+    def __init__(self, message: str = "This page is locked. Unlock it to make changes.") -> None:
+        super().__init__(message)

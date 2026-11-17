@@ -30,7 +30,7 @@ CHUNK_SIZE = 1024 * 256
 @dataclass(frozen=True, slots=True)
 class FileType:
     mime: str
-    kind: str  # image | pdf | file
+    kind: str  # image | pdf | video | audio | file
     signature: str  # which content check applies
 
 
@@ -45,6 +45,14 @@ ALLOWED_TYPES: dict[str, FileType] = {
     "webp": FileType("image/webp", "image", "webp"),
     "gif": FileType("image/gif", "image", "gif"),
     "pdf": FileType("application/pdf", "pdf", "pdf"),
+    "mp4": FileType("video/mp4", "video", "iso"),
+    "m4v": FileType("video/mp4", "video", "iso"),
+    "mov": FileType("video/quicktime", "video", "iso"),
+    "webm": FileType("video/webm", "video", "webm"),
+    "mp3": FileType("audio/mpeg", "audio", "mp3"),
+    "m4a": FileType("audio/mp4", "audio", "iso"),
+    "wav": FileType("audio/wav", "audio", "wav"),
+    "ogg": FileType("audio/ogg", "audio", "ogg"),
     "txt": FileType("text/plain; charset=utf-8", "file", _TEXT),
     "md": FileType("text/markdown; charset=utf-8", "file", _TEXT),
     "markdown": FileType("text/markdown; charset=utf-8", "file", _TEXT),
@@ -69,7 +77,9 @@ ALLOWED_TYPES: dict[str, FileType] = {
 }
 
 # Only these are ever rendered by the browser; everything else is a download.
-INLINE_KINDS = {"image", "pdf"}
+INLINE_KINDS = {"image", "pdf", "video", "audio"}
+
+IMAGE_SIGNATURES = (("png", "png"), ("jpg", "jpeg"), ("gif", "gif"), ("webp", "webp"))
 
 
 def _signature_matches(signature: str, head: bytes) -> bool:
@@ -83,6 +93,18 @@ def _signature_matches(signature: str, head: bytes) -> bool:
         return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
     if signature == "pdf":
         return b"%PDF-" in head[:1024]
+    if signature == "iso":  # MP4 / QuickTime / M4A containers
+        return head[4:8] == b"ftyp"
+    if signature == "webm":
+        return head.startswith(b"\x1a\x45\xdf\xa3")
+    if signature == "mp3":
+        return head.startswith(b"ID3") or (
+            len(head) > 1 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0
+        )
+    if signature == "wav":
+        return head[:4] == b"RIFF" and head[8:12] == b"WAVE"
+    if signature == "ogg":
+        return head.startswith(b"OggS")
     if signature == _ZIP:
         return head.startswith((b"PK\x03\x04", b"PK\x05\x06"))
     if signature == _OLE:
@@ -254,3 +276,11 @@ def unlink_files(paths: list[Path]) -> None:
     for path in paths:
         with contextlib.suppress(OSError):
             path.unlink(missing_ok=True)
+
+
+def image_extension(head: bytes) -> str | None:
+    """File extension for image bytes, judged by content alone."""
+    for extension, signature in IMAGE_SIGNATURES:
+        if _signature_matches(signature, head):
+            return extension
+    return None

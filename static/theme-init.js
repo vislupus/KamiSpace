@@ -3,7 +3,8 @@
 (function () {
   var theme = 'system';
   try {
-    theme = localStorage.getItem('minddock.theme') || 'system';
+    // "minddock.theme" is the key used before the project was renamed.
+    theme = localStorage.getItem('kamispace.theme') || localStorage.getItem('minddock.theme') || 'system';
   } catch (_) {}
   var dark =
     theme === 'dark' ||

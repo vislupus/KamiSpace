@@ -6,7 +6,7 @@ export const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 /** Sign in through the API (the session cookie lands in the browser context). */
 export async function signIn(page, username = 'alice') {
   const response = await page.request.post('/api/auth/login', {
-    data: { identifier: username, password: PASSWORD },
+    data: { username, password: PASSWORD },
   });
   expect(response.ok()).toBeTruthy();
   const body = await response.json();

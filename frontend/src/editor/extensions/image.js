@@ -7,7 +7,7 @@ export function fileUrl(attachmentId) {
 }
 
 /**
- * Image block. Only images uploaded to MindDock can be embedded: the node
+ * Image block. Only images uploaded to KamiSpace can be embedded: the node
  * stores an attachment id, never an arbitrary URL, so pages cannot load
  * remote trackers and access control always applies.
  */
@@ -37,7 +37,7 @@ export const ImageBlock = Node.create({
         }),
       },
       {
-        // Images copied from another MindDock page.
+        // Images copied from another KamiSpace page.
         tag: 'img[src]',
         getAttrs: (element) => {
           const match = (element.getAttribute('src') || '').match(FILE_URL);
@@ -69,6 +69,13 @@ export const ImageBlock = Node.create({
       ],
     ];
   },
+
+  // Markdown: ![alt](/api/files/<id>). Pictures are lifted out of paragraphs
+  // (and foreign addresses turned into links) in editor/markdown.js.
+  markdownTokenName: 'image',
+  parseMarkdown: (token) => ({ type: 'image', attrs: { src: token.href, alt: token.text } }),
+  renderMarkdown: (node) =>
+    `![${(node.attrs?.alt ?? '').replace(/[\[\]]/g, '')}](${fileUrl(node.attrs?.attachmentId)})`,
 
   addCommands() {
     return {

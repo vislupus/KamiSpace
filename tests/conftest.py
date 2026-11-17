@@ -27,8 +27,8 @@ PNG_BYTES = bytes.fromhex(
 
 
 def _use_data_dir(monkeypatch: pytest.MonkeyPatch, data_dir: Path) -> None:
-    monkeypatch.setenv("MINDDOCK_DATA_DIR", str(data_dir))
-    monkeypatch.setenv("MINDDOCK_ENV", "development")
+    monkeypatch.setenv("KAMISPACE_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("KAMISPACE_ENV", "development")
     reset_engine()
     get_settings.cache_clear()
 
@@ -99,9 +99,9 @@ class ApiClient:
     def delete(self, url: str, **kwargs: Any):
         return self.request("DELETE", url, **kwargs)
 
-    def login(self, identifier: str, password: str = PASSWORD):
+    def login(self, username: str, password: str = PASSWORD):
         response = self.http.post(
-            "/api/auth/login", json={"identifier": identifier, "password": password}
+            "/api/auth/login", json={"username": username, "password": password}
         )
         if response.status_code == 200:
             body = response.json()
@@ -157,14 +157,7 @@ def make_user(username: str, *, is_admin: bool = False) -> int:
     from app.services import auth
 
     with session_scope() as db:
-        user = auth.create_user(
-            db,
-            username=username,
-            email=f"{username}@example.com",
-            password=PASSWORD,
-            display_name=username.title(),
-            is_admin=is_admin,
-        )
+        user = auth.create_user(db, username=username, password=PASSWORD, is_admin=is_admin)
         return user.id
 
 

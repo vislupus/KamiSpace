@@ -25,6 +25,7 @@ def create_page(body: PageCreateIn, access: UserAccess, db: Db) -> dict[str, Any
         title=body.title,
         icon=body.icon,
         content=body.content,
+        link_in_parent=body.link_in_parent,
     )
     db.commit()
     return pages.page_detail(db, access, page)
@@ -47,6 +48,11 @@ def update_page(page_id: int, body: PageMetaIn, access: UserAccess, db: Db) -> d
     return {
         **pages.serialize_meta(page, access.page_role(page.id)),
         "cover_attachment_id": page.cover_attachment_id,
+        "cover_position": page.cover_position,
+        "font": page.font,
+        "small_text": page.small_text,
+        "full_width": page.full_width,
+        "locked": page.locked,
         "updated_at": page.updated_at.isoformat(),
     }
 

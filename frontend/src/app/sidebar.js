@@ -1,6 +1,7 @@
 // Sidebar: quick actions, favourites, one tree per workspace, shared pages.
 import { h, kbd } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
+import { logoMark } from '../lib/logo.js';
 import { openMenu } from '../lib/menu.js';
 import { getThemeChoice, setThemeChoice } from '../lib/theme.js';
 import {
@@ -30,11 +31,11 @@ import {
 } from './store.js';
 import { expandAll, isExpanded, setExpanded } from './tree-state.js';
 
-const DRAG_TYPE = 'application/x-minddock-page';
+const DRAG_TYPE = 'application/x-kamispace-page';
 
 export function createSidebar({
   onSearch,
-  onCapture,
+  onNewPage,
   onSettings,
   onShortcuts,
   onToggle,
@@ -51,8 +52,8 @@ export function createSidebar({
   const workspaceButton = h(
     'button',
     { class: 'workspace-button', type: 'button', 'aria-haspopup': 'menu' },
-    h('span', { class: 'logo-mark' }, 'M'),
-    h('span', { class: 'workspace-name' }, 'MindDock'),
+    logoMark(20),
+    h('span', { class: 'workspace-name' }, 'KamiSpace'),
     icon('chevron-down', 14),
   );
   workspaceButton.addEventListener('click', () => {
@@ -61,7 +62,7 @@ export function createSidebar({
     openMenu({
       anchor: workspaceButton,
       items: [
-        { heading: `${store.user.display_name} · @${store.user.username}` },
+        { heading: `Signed in as ${store.user.username}` },
         { label: 'Settings', icon: 'settings', onSelect: () => onSettings() },
         {
           label: 'Theme',
@@ -90,6 +91,20 @@ export function createSidebar({
     { class: 'side-action', href: '/', dataset: { link: '' } },
     icon('home', 16),
     'Home',
+  );
+  const libraryLink = h(
+    'a',
+    { class: 'side-action', href: '/library', dataset: { link: '' } },
+    icon('library', 16),
+    'Library',
+  );
+  const tasksBadge = h('span', { class: 'side-badge', hidden: true });
+  const tasksLink = h(
+    'a',
+    { class: 'side-action', href: '/tasks', dataset: { link: '' } },
+    icon('tasks', 16),
+    'My tasks',
+    tasksBadge,
   );
   const trashLink = h(
     'a',
@@ -129,12 +144,14 @@ export function createSidebar({
       ),
       h(
         'button',
-        { class: 'side-action', type: 'button', onclick: onCapture },
-        icon('zap', 16),
-        'Quick capture',
-        h('span', { class: 'kbd' }, kbd('Alt+Shift+N')),
+        { class: 'side-action', type: 'button', onclick: onNewPage },
+        icon('compose', 16),
+        'New page',
+        h('span', { class: 'kbd' }, kbd('Alt+N')),
       ),
       homeLink,
+      libraryLink,
+      tasksLink,
     ),
     scroll,
     h(
@@ -442,6 +459,10 @@ export function createSidebar({
     const activeId = route.name === 'page' ? route.pageId : null;
     homeLink.classList.toggle('is-active', route.name === 'home');
     trashLink.classList.toggle('is-active', route.name === 'trash');
+    libraryLink.classList.toggle('is-active', route.name === 'library');
+    tasksLink.classList.toggle('is-active', route.name === 'tasks');
+    tasksBadge.hidden = !store.openTasks;
+    tasksBadge.textContent = String(store.openTasks);
     const scrollTop = scroll.scrollTop;
     const focusedId = document.activeElement?.closest?.('.tree-row')?.dataset.id;
     const sections = [];

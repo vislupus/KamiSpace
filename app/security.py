@@ -13,7 +13,7 @@ _hasher = PasswordHasher()  # Argon2id with the library's recommended parameters
 
 # Verified against when the account does not exist, so that response timing
 # does not reveal whether a username is registered.
-_DUMMY_HASH = _hasher.hash("minddock-dummy-password")
+_DUMMY_HASH = _hasher.hash("kamispace-dummy-password")
 
 
 def hash_password(password: str) -> str:

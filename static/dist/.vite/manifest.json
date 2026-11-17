@@ -1,64 +1,157 @@
 {
-  "_dom-DuLK6_zV.js": {
-    "file": "assets/dom-DuLK6_zV.js",
-    "name": "dom",
+  "_logo-CxtBiHjq.css": {
+    "file": "assets/logo-CxtBiHjq.css",
+    "src": "_logo-CxtBiHjq.css"
+  },
+  "_logo-hcykU1Dy.js": {
+    "file": "assets/logo-hcykU1Dy.js",
+    "name": "logo",
     "css": [
-      "assets/dom-ONc4l6Qg.css"
+      "assets/logo-CxtBiHjq.css"
     ]
   },
-  "_dom-ONc4l6Qg.css": {
-    "file": "assets/dom-ONc4l6Qg.css",
-    "src": "_dom-ONc4l6Qg.css"
+  "node_modules/katex/dist/fonts/KaTeX_AMS-Regular.woff2": {
+    "file": "assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_AMS-Regular.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Caligraphic-Bold.woff2": {
+    "file": "assets/KaTeX_Caligraphic-Bold-Dq_IR9rO.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Caligraphic-Bold.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Caligraphic-Regular.woff2": {
+    "file": "assets/KaTeX_Caligraphic-Regular-Di6jR-x-.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Caligraphic-Regular.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Fraktur-Bold.woff2": {
+    "file": "assets/KaTeX_Fraktur-Bold-CL6g_b3V.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Fraktur-Bold.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Fraktur-Regular.woff2": {
+    "file": "assets/KaTeX_Fraktur-Regular-CTYiF6lA.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Fraktur-Regular.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Main-Bold.woff2": {
+    "file": "assets/KaTeX_Main-Bold-Cx986IdX.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Main-Bold.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Main-BoldItalic.woff2": {
+    "file": "assets/KaTeX_Main-BoldItalic-DxDJ3AOS.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Main-BoldItalic.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Main-Italic.woff2": {
+    "file": "assets/KaTeX_Main-Italic-NWA7e6Wa.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Main-Italic.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Main-Regular.woff2": {
+    "file": "assets/KaTeX_Main-Regular-B22Nviop.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Main-Regular.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Math-BoldItalic.woff2": {
+    "file": "assets/KaTeX_Math-BoldItalic-CZnvNsCZ.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Math-BoldItalic.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Math-Italic.woff2": {
+    "file": "assets/KaTeX_Math-Italic-t53AETM-.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Math-Italic.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_SansSerif-Bold.woff2": {
+    "file": "assets/KaTeX_SansSerif-Bold-D1sUS0GD.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_SansSerif-Bold.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_SansSerif-Italic.woff2": {
+    "file": "assets/KaTeX_SansSerif-Italic-C3H0VqGB.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_SansSerif-Italic.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_SansSerif-Regular.woff2": {
+    "file": "assets/KaTeX_SansSerif-Regular-DDBCnlJ7.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_SansSerif-Regular.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Script-Regular.woff2": {
+    "file": "assets/KaTeX_Script-Regular-D3wIWfF6.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Script-Regular.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Size1-Regular.woff2": {
+    "file": "assets/KaTeX_Size1-Regular-mCD8mA8B.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Size1-Regular.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Size2-Regular.woff2": {
+    "file": "assets/KaTeX_Size2-Regular-Dy4dx90m.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Size2-Regular.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Size3-Regular.woff2": {
+    "file": "assets/KaTeX_Size3-Regular-gV2CO0n9.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Size3-Regular.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Size4-Regular.woff2": {
+    "file": "assets/KaTeX_Size4-Regular-Dl5lxZxV.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Size4-Regular.woff2"
+  },
+  "node_modules/katex/dist/fonts/KaTeX_Typewriter-Regular.woff2": {
+    "file": "assets/KaTeX_Typewriter-Regular-CO6r4hn1.woff2",
+    "src": "node_modules/katex/dist/fonts/KaTeX_Typewriter-Regular.woff2"
+  },
+  "node_modules/katex/dist/katex.min.css": {
+    "file": "assets/katex-BF8H4eZg.css",
+    "src": "node_modules/katex/dist/katex.min.css"
+  },
+  "node_modules/katex/dist/katex.mjs": {
+    "file": "assets/katex-BYLiqMcl.js",
+    "name": "katex",
+    "src": "node_modules/katex/dist/katex.mjs",
+    "isDynamicEntry": true
   },
   "src/app/history.js": {
-    "file": "assets/history-Dn4Hk7KE.js",
+    "file": "assets/history-BIIg7Koy.js",
     "name": "history",
     "src": "src/app/history.js",
     "isDynamicEntry": true,
     "imports": [
-      "_dom-DuLK6_zV.js",
+      "_logo-hcykU1Dy.js",
       "src/main.js"
     ]
   },
   "src/app/settings.js": {
-    "file": "assets/settings-DuYOKJfL.js",
+    "file": "assets/settings-BYkgFYWN.js",
     "name": "settings",
     "src": "src/app/settings.js",
     "isDynamicEntry": true,
     "imports": [
-      "_dom-DuLK6_zV.js",
+      "_logo-hcykU1Dy.js",
       "src/main.js"
     ]
   },
   "src/auth.js": {
-    "file": "assets/auth-yhjQ-a45.js",
+    "file": "assets/auth-CNmqPEFV.js",
     "name": "auth",
     "src": "src/auth.js",
     "isEntry": true,
     "imports": [
-      "_dom-DuLK6_zV.js"
+      "_logo-hcykU1Dy.js"
     ],
     "css": [
-      "assets/auth-DUdASHdq.css"
+      "assets/auth-3DZ6FeCv.css"
     ]
   },
   "src/editor/index.js": {
-    "file": "assets/editor-BFUmAXfC.js",
+    "file": "assets/editor-qNIeHS1C.js",
     "name": "editor",
     "src": "src/editor/index.js",
     "isDynamicEntry": true,
     "imports": [
-      "_dom-DuLK6_zV.js",
+      "_logo-hcykU1Dy.js",
       "src/main.js"
+    ],
+    "dynamicImports": [
+      "node_modules/katex/dist/katex.mjs"
     ]
   },
   "src/main.js": {
-    "file": "assets/main-CfK-xRbM.js",
+    "file": "assets/main-orekmWJH.js",
     "name": "main",
     "src": "src/main.js",
     "isEntry": true,
     "imports": [
-      "_dom-DuLK6_zV.js"
+      "_logo-hcykU1Dy.js"
     ],
     "dynamicImports": [
       "src/editor/index.js",
@@ -66,7 +159,7 @@
       "src/app/settings.js"
     ],
     "css": [
-      "assets/main-C8Ck08CV.css"
+      "assets/main-DAMuw7Ug.css"
     ]
   }
 }

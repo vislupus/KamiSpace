@@ -1,6 +1,6 @@
 # Architecture and design decisions
 
-MindDock is deliberately small: one FastAPI process, one SQLite database, a
+KamiSpace is deliberately small: one FastAPI process, one SQLite database, a
 frontend without a framework. This document records the decisions that shape
 the code and why they were made.
 
@@ -36,7 +36,8 @@ failure where a transaction that started reading cannot upgrade to a write.
 
 `users`, `sessions`, `invites`, `login_attempts`, `settings`, `workspaces`,
 `workspace_members`, `pages`, `page_permissions`, `page_versions`,
-`attachments`, `page_attachments`, `favorites`, `page_visits`, `audit_events`,
+`attachments`, `page_attachments`, `tasks`, `favorites`, `page_visits`,
+`audit_events`,
 plus the FTS5 table `pages_fts`. The schema is created by Alembic
 (`migrations/`); a test fails if models and migrations drift apart.
 
@@ -50,6 +51,16 @@ plus the FTS5 table `pages_fts`. The schema is created by Alembic
   only removed when a page is permanently deleted, and a file is deleted only
   when its last reference goes — that is what keeps images alive for old
   versions, trashed pages and duplicates.
+
+- **Tasks** are to-do items inside documents. Each item carries an id, an
+  optional assignee and due date; the `tasks` table is an index rebuilt from
+  the document whenever a page is saved. The document stays the source of
+  truth — ticking a task in "My tasks" edits the document (and bumps its
+  revision) like any other change.
+- **Page links** store the id of the page they point to. Titles and icons are
+  looked up when a link is shown, so links never go stale and a reader only
+  ever sees the titles of pages they may open. Creating a sub-page appends a
+  link to its parent; duplicating a tree remaps the links inside the copy.
 
 ### Permissions
 
@@ -66,7 +77,7 @@ only owners can move a page out of the place it inherits access from.
   nothing is written. The client then lets the user choose; a forced overwrite
   always creates a new version, so the losing side remains in the history.
 - Invariant: **the newest version equals the current content.** Autosaves by
-  the same author within `MINDDOCK_VERSION_INTERVAL_MINUTES` update that
+  the same author within `KAMISPACE_VERSION_INTERVAL_MINUTES` update that
   newest version in place; a different author, a pause, a named snapshot or a
   restore starts a new one. History therefore grows by editing sessions, not
   keystrokes, and restoring simply appends.
@@ -102,13 +113,14 @@ which manages its own DOM and gains nothing from a virtual DOM around it.
 The rest (sidebar tree, dialogs, menus) is a few hundred lines of direct DOM
 code on top of four small primitives: `h()`, popover, menu, modal.
 
-Measured bundle (minified / gzip): application shell 67 kB / 23 kB, CSS
-36 kB / 9 kB, editor chunk 614 kB / 191 kB (ProseMirror, Tiptap, table support
-and 22 highlight.js grammars). The editor chunk is loaded on demand the first
-time a page is opened, and settings and version history are separate lazy
-chunks. Assets are content-hashed and served with immutable caching.
+Measured bundle (minified / gzip): application shell 80 kB / 27 kB, CSS
+47 kB / 11 kB, editor chunk 724 kB / 226 kB (ProseMirror, Tiptap, tables,
+Markdown and 22 highlight.js grammars), KaTeX 259 kB / 78 kB plus its fonts. The editor chunk is loaded on demand
+the first time a page is opened; settings, version history and KaTeX (script,
+styles and woff2 fonts, only when a page contains an equation) are separate
+lazy chunks. Assets are content-hashed and served with immutable caching.
 
-The built bundle is committed so that installing MindDock needs only uv.
+The built bundle is committed so that installing KamiSpace needs only uv.
 
 ### Editor
 
@@ -126,7 +138,17 @@ The built bundle is committed so that installing MindDock needs only uv.
   `table-toolbar.js` are contextual UI — nothing is permanently visible.
 - `extensions/uploads.js` handles paste, drop and file pickers, with
   placeholder decorations while a file uploads.
-- Custom nodes: `callout`, `image` (attachment id only), `attachment`.
+- Custom nodes: `callout`, `columns`/`column`, toggles (Tiptap's details
+  nodes with a heading level), `image`/`video`/`audio`/`attachment`
+  (attachment id only), `embed`, `bookmark`, `blockEquation`/`inlineEquation`,
+  `pageLink`/`pageMention`; custom marks `textColor` and `highlight` (colour
+  *names*, valued by the stylesheet per theme).
+- `extensions/app-context.js` is the only bridge to the rest of the app
+  (other pages, people, server fetches); the page view fills it in.
+- `markdown.js` exports and imports Markdown through Tiptap's Markdown
+  support; KamiSpace-only blocks use `:::name {attributes}` blocks.
+- `extensions/paste-images.js` uploads pictures found in pasted HTML (Word's
+  `file://` pictures are recovered from the clipboard's RTF flavour).
 
 Node and mark names are shared with the server's allow-list
 (`app/services/document.py`); adding a block type means updating both.
@@ -162,4 +184,7 @@ frame), no long tasks.
   themselves when they regain focus.
 - **Full version snapshots** cost disk space on very large, frequently edited
   pages. Versions disappear only when their page is permanently deleted.
-- **Block handles are top-level.** List items are moved with the keyboard.
+- **Block handles are top-level.** Blocks inside lists, columns and toggles
+  are moved with the keyboard.
+- **Toggle state is part of the document.** Opening or closing a toggle is an
+  edit (saved, versioned) — simple and predictable, at the cost of a save.

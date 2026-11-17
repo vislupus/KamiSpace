@@ -79,7 +79,7 @@ def record_version(
 
 def list_versions(db: Session, page_id: int) -> list[dict[str, Any]]:
     rows = db.execute(
-        select(PageVersion, User.display_name)
+        select(PageVersion, User.username)
         .outerjoin(User, User.id == PageVersion.author_id)
         .where(PageVersion.page_id == page_id)
         .order_by(PageVersion.number.desc())
@@ -117,7 +117,7 @@ def author_name(db: Session, version: PageVersion) -> str | None:
     if version.author_id is None:
         return None
     return db.execute(
-        select(User.display_name).where(User.id == version.author_id)
+        select(User.username).where(User.id == version.author_id)
     ).scalar_one_or_none()
 
 

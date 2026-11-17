@@ -1,12 +1,14 @@
 // A single page: top bar, cover, icon, title and the block editor.
 import { api } from '../lib/api.js';
+import { copyText } from '../lib/clipboard.js';
 import { h, kbd, replace } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { openMenu } from '../lib/menu.js';
 import { promptDialog } from '../lib/modal.js';
 import { toast, toastError } from '../lib/toast.js';
-import { debounce, timeAgo } from '../lib/util.js';
+import { clamp, debounce, timeAgo } from '../lib/util.js';
 import {
+  createPage,
   copyPageLink,
   duplicatePage,
   purgePage,
@@ -15,9 +17,10 @@ import {
   trashPage,
 } from './actions.js';
 import { openEmojiPicker } from './emoji.js';
+import { downloadText, importMarkdown } from './import.js';
 import { navigate, pagePath } from './router.js';
 import { DocSaver } from './saver.js';
-import { emit, isFavorite, on, patchPage, store } from './store.js';
+import { emit, getPage, isFavorite, on, patchPage, store, userName } from './store.js';
 
 const SAVE_LABELS = {
   saved: 'Saved',
@@ -104,7 +107,10 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
   if (destroyed) return { flush: async () => {}, destroy() {} };
 
   const trashed = Boolean(page.deleted_at);
-  const editable = page.can_edit && !trashed;
+  const locked = Boolean(page.locked);
+  // A locked page is read-only for everyone until it is unlocked.
+  const editable = page.can_edit && !trashed && !locked;
+  const canChange = page.can_edit && !trashed;
 
   // -- top bar --------------------------------------------------------------
 
@@ -173,20 +179,92 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
     { class: 'icon-button', type: 'button', title: 'More', 'aria-label': 'Page menu', 'aria-haspopup': 'menu' },
     icon('more', 16),
   );
+  async function setMeta(fields, { reload = false } = {}) {
+    const ok = await saveMeta(fields);
+    if (ok && reload) shell.reloadPage();
+    else if (ok) applyAppearance();
+  }
+
+  async function copyContents() {
+    const markdown = editorModule.documentToMarkdown(editor, page.title);
+    const html = `<h1>${page.title.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])}</h1>${editor.getHTML()}`;
+    if (await copyText(markdown, html)) toast('Page contents copied', { type: 'success', duration: 2000 });
+    else toast('Could not copy to the clipboard', { type: 'error' });
+  }
+
+  function exportMarkdown() {
+    downloadText(
+      editorModule.markdownFileName(page.title),
+      editorModule.documentToMarkdown(editor, page.title),
+    );
+  }
+
   moreButton.addEventListener('click', () => {
+    const fonts = [
+      ['default', 'Default'],
+      ['serif', 'Serif'],
+      ['mono', 'Mono'],
+    ];
     openMenu({
       anchor: moreButton,
       placement: 'bottom-end',
       items: [
+        { label: 'Copy link', icon: 'link', onSelect: () => copyPageLink(page.id) },
+        { label: 'Copy page contents', icon: 'clipboard-copy', onSelect: copyContents },
+        { label: 'Duplicate', icon: 'copy', onSelect: () => duplicatePage(page.id) },
+        editable ? { label: 'Move to…', icon: 'move', onSelect: () => shell.openMove(page.id) } : null,
+        { separator: true },
+        canChange
+          ? {
+              label: 'Appearance & layout',
+              icon: 'text',
+              disabled: locked,
+              submenu: [
+                { heading: 'Font' },
+                ...fonts.map(([value, label]) => ({
+                  label,
+                  checked: page.font === value,
+                  onSelect: () => setMeta({ font: value }),
+                })),
+                { separator: true },
+                {
+                  label: 'Small text',
+                  checked: page.small_text,
+                  onSelect: () => setMeta({ small_text: !page.small_text }),
+                },
+                {
+                  label: 'Full width',
+                  checked: page.full_width,
+                  onSelect: () => setMeta({ full_width: !page.full_width }),
+                },
+              ],
+            }
+          : null,
+        canChange
+          ? {
+              label: locked ? 'Unlock page' : 'Lock page',
+              icon: locked ? 'unlock' : 'lock',
+              onSelect: async () => {
+                await flush();
+                setMeta({ locked: !locked }, { reload: true });
+              },
+            }
+          : null,
         {
           label: shell.isFocusMode() ? 'Exit focus mode' : 'Focus mode',
           icon: shell.isFocusMode() ? 'minimize' : 'maximize',
           hint: kbd('Mod+Shift+F'),
           onSelect: shell.toggleFocusMode,
         },
-        { label: 'Copy link', icon: 'link', onSelect: () => copyPageLink(page.id) },
-        { label: 'Duplicate', icon: 'copy', onSelect: () => duplicatePage(page.id) },
-        editable ? { label: 'Move to…', icon: 'move', onSelect: () => shell.openMove(page.id) } : null,
+        { separator: true },
+        { label: 'Export as Markdown', icon: 'file-down', onSelect: exportMarkdown },
+        editable
+          ? {
+              label: 'Import Markdown as sub-page',
+              icon: 'file-up',
+              onSelect: () => importMarkdown({ parentId: page.id }),
+            }
+          : null,
         { label: 'Version history', icon: 'history', onSelect: openHistory },
         editable ? { label: 'Save a version…', icon: 'archive', onSelect: saveVersion } : null,
         { separator: true },
@@ -210,6 +288,19 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
       editable ? saveState : null,
       !page.can_edit ? h('span', { class: 'badge' }, icon('eye', 12), 'View only') : null,
       trashed ? h('span', { class: 'badge' }, 'In recycle bin') : null,
+      locked && !trashed
+        ? h(
+            page.can_edit ? 'button' : 'span',
+            {
+              class: 'badge lock-badge',
+              type: page.can_edit ? 'button' : null,
+              title: page.can_edit ? 'Unlock this page' : 'This page is locked',
+              onclick: page.can_edit ? () => setMeta({ locked: false }, { reload: true }) : null,
+            },
+            icon('lock', 12),
+            'Locked',
+          )
+        : null,
       trashed
         ? null
         : h(
@@ -269,15 +360,99 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
   async function saveMeta(fields) {
     try {
       const result = await api.patch(`/api/pages/${page.id}`, fields);
-      Object.assign(page, {
-        title: result.title,
-        icon: result.icon,
-        cover_attachment_id: result.cover_attachment_id,
-      });
+      for (const key of [
+        'title',
+        'icon',
+        'cover_attachment_id',
+        'cover_position',
+        'font',
+        'small_text',
+        'full_width',
+        'locked',
+      ]) {
+        page[key] = result[key];
+      }
       patchPage(page.id, { title: result.title, icon: result.icon });
+      return true;
     } catch (error) {
       toastError(error, 'Could not update the page');
+      return false;
     }
+  }
+
+  function applyAppearance() {
+    article.classList.toggle('font-serif', page.font === 'serif');
+    article.classList.toggle('font-mono', page.font === 'mono');
+    article.classList.toggle('is-small', Boolean(page.small_text));
+    article.classList.toggle('is-wide', Boolean(page.full_width));
+  }
+
+  /** Drag the cover up or down to choose which part of the picture shows. */
+  function repositionCover() {
+    const image = cover.querySelector('img');
+    if (!image) return;
+    const original = page.cover_position;
+    let position = original;
+    let drag = null;
+    const session = new AbortController();
+    const apply = () => {
+      image.style.objectPosition = `center ${position}%`;
+    };
+    const finish = async (save) => {
+      session.abort();
+      cover.classList.remove('is-repositioning');
+      if (save && position !== original) await saveMeta({ cover_position: Math.round(position) });
+      renderHead();
+    };
+
+    cover.classList.add('is-repositioning');
+    replace(
+      cover,
+      image,
+      h('div', { class: 'cover-hint' }, 'Drag the image to reposition'),
+      h(
+        'div',
+        { class: 'cover-actions' },
+        h('button', { class: 'button button-small button-primary', type: 'button', onclick: () => finish(true) }, 'Save position'),
+        h('button', { class: 'button button-small', type: 'button', onclick: () => finish(false) }, 'Cancel'),
+      ),
+    );
+    cover.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (event.target.closest('button')) return;
+        drag = { y: event.clientY, start: position };
+        cover.setPointerCapture(event.pointerId);
+      },
+      { signal: session.signal },
+    );
+    cover.addEventListener(
+      'pointermove',
+      (event) => {
+        if (!drag) return;
+        // How far the picture can travel: its scaled height minus the frame.
+        const scale = cover.clientWidth / (image.naturalWidth || cover.clientWidth);
+        const overflow = Math.max(1, (image.naturalHeight || 0) * scale - cover.clientHeight);
+        position = clamp(drag.start - ((event.clientY - drag.y) / overflow) * 100, 0, 100);
+        apply();
+      },
+      { signal: session.signal },
+    );
+    cover.addEventListener('pointerup', () => (drag = null), { signal: session.signal });
+    cover.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          event.preventDefault();
+          position = clamp(position + (event.key === 'ArrowUp' ? -4 : 4), 0, 100);
+          apply();
+        } else if (event.key === 'Enter') finish(true);
+        else if (event.key === 'Escape') finish(false);
+      },
+      { signal: session.signal },
+    );
+    cover.tabIndex = -1;
+    cover.focus({ preventScroll: true });
   }
 
   async function chooseCover() {
@@ -317,12 +492,19 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
     if (hasCover) {
       replace(
         cover,
-        h('img', { src: `/api/files/${page.cover_attachment_id}`, alt: '', decoding: 'async' }),
+        h('img', {
+          src: `/api/files/${page.cover_attachment_id}`,
+          alt: '',
+          decoding: 'async',
+          draggable: false,
+          style: `object-position: center ${page.cover_position ?? 50}%`,
+        }),
         editable
           ? h(
               'div',
               { class: 'cover-actions' },
               h('button', { class: 'button button-small', type: 'button', onclick: chooseCover }, 'Change cover'),
+              h('button', { class: 'button button-small', type: 'button', onclick: repositionCover }, 'Reposition'),
               h(
                 'button',
                 {
@@ -386,7 +568,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
     if (title.value.includes('\n')) title.value = title.value.replace(/\n+/g, ' ');
     resizeTitle();
     page.title = title.value.trim();
-    document.title = `${page.title || 'Untitled'} · MindDock`;
+    document.title = `${page.title || 'Untitled'} · KamiSpace`;
     patchPage(page.id, { title: page.title });
     renderCrumbs();
     saveTitle();
@@ -485,14 +667,31 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
   renderCrumbs();
   renderStar();
   resizeTitle();
-  document.title = `${page.title || 'Untitled'} · MindDock`;
+  document.title = `${page.title || 'Untitled'} · KamiSpace`;
   // A new page starts at the top, without animating from the old position.
   container.scrollTo({ top: 0, behavior: 'instant' });
 
+  const context = {
+    pageId: page.id,
+    getPage: (id) => getPage(id),
+    listPages: () => [...store.pages.values()],
+    openPage: (id) => navigate(pagePath(id)),
+    // Sub-pages made from inside the editor are linked where the caret is,
+    // so the server must not add a second link at the end of the page.
+    createSubPage: (title) =>
+      createPage({ parentId: page.id, title, open: false, linkInParent: false }),
+    subscribe: (listener) => on('tree', listener),
+    listUsers: () => [...store.users].map(([id, username]) => ({ id, username })),
+    userName,
+    remoteFetch: Boolean(store.limits.remote_fetch),
+    fetchBookmark: (url) => api.post('/api/bookmarks', { url }),
+    importImage: (url) => api.post(`/api/pages/${page.id}/files/remote`, { url }),
+  };
   editor = editorModule.createEditor({
     element: editorMount,
     content: page.content,
     editable,
+    context,
     limits: store.limits,
     upload: (file) => api.upload(`/api/pages/${page.id}/files`, file),
     onChange: () => saver?.touch(),
@@ -501,6 +700,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
       title.setSelectionRange(title.value.length, title.value.length);
     },
   });
+  applyAppearance();
 
   if (editable) {
     saver = new DocSaver({
@@ -572,6 +772,11 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
     }),
     on('page-moved', ({ pageId: id }) => {
       if (id === page.id) shell.reloadPage();
+    }),
+    // Something outside the editor changed this page (a sub-page link was
+    // added, a task was ticked in "My tasks"): pick it up.
+    on('page-content-changed', ({ pageId: id }) => {
+      if (id === page.id) refreshIfStale();
     }),
   );
 

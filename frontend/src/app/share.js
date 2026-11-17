@@ -24,12 +24,12 @@ function person(user, trailing, sub) {
   return h(
     'div',
     { class: 'list-row' },
-    h('span', { class: 'avatar' }, initials(user.display_name)),
+    h('span', { class: 'avatar' }, initials(user.username)),
     h(
       'div',
       { class: 'list-main' },
-      h('div', { class: 'list-title' }, user.display_name),
-      h('div', { class: 'list-sub' }, sub ?? `@${user.username}`),
+      h('div', { class: 'list-title' }, user.username),
+      sub ? h('div', { class: 'list-sub' }, sub) : null,
     ),
     trailing,
   );
@@ -51,7 +51,7 @@ export async function openShareDialog(pageId) {
 
   const input = h('input', {
     class: 'input',
-    placeholder: 'Add people by name or username…',
+    placeholder: 'Add people by username…',
     autocomplete: 'off',
     spellcheck: false,
     'aria-label': 'Find people',

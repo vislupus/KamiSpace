@@ -101,13 +101,12 @@ def list_members(db: Session, workspace_id: int) -> list[dict[str, Any]]:
         select(WorkspaceMember, User)
         .join(User, User.id == WorkspaceMember.user_id)
         .where(WorkspaceMember.workspace_id == workspace_id)
-        .order_by(func.lower(User.display_name))
+        .order_by(User.username)
     ).all()
     return [
         {
             "user_id": user.id,
             "username": user.username,
-            "display_name": user.display_name,
             "is_active": user.is_active,
             "role": member.role,
         }

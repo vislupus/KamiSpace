@@ -1,5 +1,6 @@
 // Page operations shared by the sidebar, the page view and the palette.
 import { api } from '../lib/api.js';
+import { copyText } from '../lib/clipboard.js';
 import { confirmDialog } from '../lib/modal.js';
 import { toast, toastError } from '../lib/toast.js';
 import { navigate, pagePath, parseRoute } from './router.js';
@@ -13,16 +14,36 @@ import {
 } from './store.js';
 import { setExpanded } from './tree-state.js';
 
-export async function createPage({ workspaceId = null, parentId = null, title = '' } = {}) {
+let beforeCreate = async () => {};
+
+/** The shell registers a hook that saves the open page before a sub-page is added. */
+export function setBeforeCreate(hook) {
+  beforeCreate = hook;
+}
+
+export async function createPage({
+  workspaceId = null,
+  parentId = null,
+  title = '',
+  content = null,
+  open = true,
+  linkInParent = true,
+} = {}) {
   try {
+    // Creating a sub-page adds a link to its parent on the server; pending
+    // edits of the parent must be saved first so the two do not collide.
+    if (parentId && linkInParent) await beforeCreate();
     const page = await api.post('/api/pages', {
       workspace_id: parentId ? null : workspaceId,
       parent_id: parentId,
       title,
+      content,
+      link_in_parent: linkInParent,
     });
     if (parentId) setExpanded(parentId, true);
     await refreshTree();
-    await navigate(pagePath(page.id));
+    if (parentId && linkInParent) emit('page-content-changed', { pageId: parentId });
+    if (open) await navigate(pagePath(page.id));
     return page;
   } catch (error) {
     toastError(error, 'Could not create the page');
@@ -135,13 +156,17 @@ export async function movePage(pageId, destination) {
   }
 }
 
+export function pageUrl(pageId) {
+  return `${location.origin}${pagePath(pageId)}`;
+}
+
 export async function copyPageLink(pageId) {
-  const url = `${location.origin}${pagePath(pageId)}`;
-  try {
-    await navigator.clipboard.writeText(url);
+  const url = pageUrl(pageId);
+  if (await copyText(url)) {
     toast('Link copied', { type: 'success', duration: 2000 });
-  } catch {
-    toast(url);
+  } else {
+    // Last resort: show the address so it can be copied by hand.
+    toast(url, { duration: 10000 });
   }
 }
 

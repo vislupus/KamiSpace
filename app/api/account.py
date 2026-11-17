@@ -5,11 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter
-from sqlalchemy import select
 
 from app.deps import CurrentSession, CurrentUser, Db
-from app.errors import Conflict, Forbidden
-from app.models import User
+from app.errors import Forbidden
 from app.schemas import AccountUpdateIn, PasswordChangeIn
 from app.security import verify_password
 from app.services import audit, auth
@@ -19,14 +17,13 @@ router = APIRouter(prefix="/account", tags=["account"])
 
 @router.patch("")
 def update_account(body: AccountUpdateIn, user: CurrentUser, db: Db) -> dict[str, Any]:
-    if body.display_name is not None:
-        user.display_name = auth.clean_display_name(body.display_name, user.username)
-    if body.email is not None:
-        email = auth.normalize_email(body.email)
-        taken = db.execute(select(User.id).where(User.email == email, User.id != user.id)).first()
-        if taken:
-            raise Conflict("This email address is already in use")
-        user.email = email
+    """Change your own username (it is also what you sign in with)."""
+    previous = user.username
+    auth.rename_user(db, user, body.username)
+    if user.username != previous:
+        audit.record(
+            db, "account.renamed", user=user, detail={"from": previous, "to": user.username}
+        )
     db.commit()
     return auth.serialize_user(user, private=True)
 

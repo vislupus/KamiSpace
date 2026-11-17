@@ -10,7 +10,10 @@ export const store = {
   pages: new Map(),
   favorites: [],
   recents: [],
-  limits: { max_upload_bytes: 0, upload_extensions: [] },
+  /** @type {Map<number, string>} user id → username (active accounts) */
+  users: new Map(),
+  openTasks: 0,
+  limits: { max_upload_bytes: 0, upload_extensions: [], remote_fetch: false },
   currentPageId: null,
 };
 
@@ -29,6 +32,8 @@ function applyTree(data) {
   store.pages = new Map(data.pages.map((page) => [page.id, page]));
   store.favorites = data.favorites;
   store.recents = data.recents;
+  store.users = new Map(data.users.map((user) => [user.id, user.username]));
+  store.openTasks = data.open_tasks;
 }
 
 export async function loadBootstrap() {
@@ -137,4 +142,14 @@ export function personalWorkspace() {
 
 export function canCreateIn(workspace) {
   return workspace && (workspace.role === 'owner' || workspace.role === 'editor');
+}
+
+export function userName(id) {
+  return store.users.get(id) ?? null;
+}
+
+export function setOpenTasks(count) {
+  if (store.openTasks === count) return;
+  store.openTasks = count;
+  emit('tree');
 }

@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = Number(process.env.MINDDOCK_E2E_PORT || 8791);
+const PORT = Number(process.env.KAMISPACE_E2E_PORT || 8791);
 
 // Browser tests run against a throwaway server (see tests/e2e_server.py).
 // Build the frontend first: `npm run build`.

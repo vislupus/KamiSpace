@@ -1,4 +1,4 @@
-"""Workspace-wide data for the signed-in user: bootstrap, search, capture."""
+"""Workspace-wide data for the signed-in user: bootstrap, search, people."""
 
 from __future__ import annotations
 
@@ -8,8 +8,7 @@ from fastapi import APIRouter, Query
 
 from app.config import get_settings
 from app.deps import CurrentSession, Db, UserAccess
-from app.schemas import CaptureIn
-from app.services import auth, files, pages, search, sharing, workspaces
+from app.services import auth, files, pages, search, sharing, tasks, workspaces
 
 router = APIRouter(tags=["workspace"])
 
@@ -25,9 +24,12 @@ def bootstrap(session: CurrentSession, access: UserAccess, db: Db) -> dict[str, 
         "pages": pages.list_tree(db, access),
         "favorites": pages.list_favorites(db, access),
         "recents": pages.list_recents(db, access),
+        "users": sharing.user_directory(db),
+        "open_tasks": tasks.count_open(db, access),
         "limits": {
             "max_upload_bytes": settings.max_upload_bytes,
             "upload_extensions": sorted(files.ALLOWED_TYPES),
+            "remote_fetch": settings.allow_remote_fetch,
         },
     }
 
@@ -39,6 +41,8 @@ def tree(access: UserAccess, db: Db) -> dict[str, Any]:
         "pages": pages.list_tree(db, access),
         "favorites": pages.list_favorites(db, access),
         "recents": pages.list_recents(db, access),
+        "users": sharing.user_directory(db),
+        "open_tasks": tasks.count_open(db, access),
     }
 
 
@@ -54,10 +58,3 @@ def user_directory(
     access: UserAccess, db: Db, q: str = Query(default="", max_length=100)
 ) -> list[dict[str, Any]]:
     return sharing.user_directory(db, q)
-
-
-@router.post("/capture")
-def quick_capture(body: CaptureIn, access: UserAccess, db: Db) -> dict[str, Any]:
-    page = pages.capture(db, access, body.text)
-    db.commit()
-    return pages.serialize_meta(page, access.page_role(page.id))

@@ -17,16 +17,16 @@ def test_login_sets_httponly_session_cookie(anon):
     response = anon.login("alice")
     assert response.status_code == 200
     cookie = response.headers["set-cookie"].lower()
-    assert "minddock_session=" in cookie
+    assert "kamispace_session=" in cookie
     assert "httponly" in cookie
     assert "samesite=lax" in cookie
     assert response.json()["user"]["username"] == "alice"
     assert "password_hash" not in response.text
 
 
-def test_login_works_with_email_and_is_case_insensitive(anon):
+def test_login_is_case_insensitive(anon):
     make_user("alice")
-    assert anon.login("Alice@Example.com").status_code == 200
+    assert anon.login("  Alice ").status_code == 200
 
 
 def test_login_rejects_bad_credentials_with_same_message(anon):
@@ -203,7 +203,7 @@ def test_registration_is_disabled_by_default(anon):
     assert anon.get("/api/auth/registration").json()["open"] is False
     response = anon.http.post(
         "/api/auth/register",
-        json={"username": "mallory", "email": "m@example.com", "password": PASSWORD},
+        json={"username": "mallory", "password": PASSWORD},
     )
     assert response.status_code == 403
 
@@ -212,40 +212,59 @@ def test_admin_can_open_registration(admin, anon):
     assert admin.put("/api/admin/settings", json={"allow_registration": True}).status_code == 200
     response = anon.http.post(
         "/api/auth/register",
-        json={"username": "dave", "email": "dave@example.com", "password": PASSWORD},
+        json={"username": "dave", "password": PASSWORD},
     )
     assert response.status_code == 200
     assert response.json()["user"]["is_admin"] is False
 
 
 def test_invitation_flow(admin, anon, client_factory):
-    invite = admin.post("/api/admin/invites", json={"email": "eve@example.com"}).json()
+    invite = admin.post("/api/admin/invites", json={}).json()
     token = invite["token"]
     status = anon.get(f"/api/auth/registration?invite={token}").json()
-    assert status == {"open": False, "invite_valid": True, "invite_email": "eve@example.com"}
-
-    wrong_email = anon.http.post(
-        "/api/auth/register",
-        json={"username": "eve", "email": "x@example.com", "password": PASSWORD, "invite": token},
-    )
-    assert wrong_email.status_code == 422
+    assert status == {"open": False, "invite_valid": True}
 
     ok = anon.http.post(
-        "/api/auth/register",
-        json={"username": "eve", "email": "eve@example.com", "password": PASSWORD, "invite": token},
+        "/api/auth/register", json={"username": "eve", "password": PASSWORD, "invite": token}
     )
     assert ok.status_code == 200
+    assert ok.json()["user"] == {
+        "id": ok.json()["user"]["id"],
+        "username": "eve",
+        "is_admin": False,
+        "is_active": True,
+        "created_at": ok.json()["user"]["created_at"],
+        "last_login_at": None,
+    }
 
     reuse = client_factory().http.post(
-        "/api/auth/register",
-        json={
-            "username": "eve2",
-            "email": "eve@example.com",
-            "password": PASSWORD,
-            "invite": token,
-        },
+        "/api/auth/register", json={"username": "eve2", "password": PASSWORD, "invite": token}
     )
     assert reuse.status_code == 403
+
+
+def test_accounts_have_no_email_or_display_name(alice):
+    user = alice.bootstrap()["user"]
+    assert "email" not in user and "display_name" not in user
+    rejected = alice.http.post(
+        "/api/auth/login",
+        json={"username": "alice", "password": PASSWORD, "email": "a@example.com"},
+    )
+    assert rejected.status_code == 422
+
+
+def test_user_can_change_their_username(alice, bob, client_factory):
+    page = alice.create_page("Mine")
+    assert alice.patch("/api/account", json={"username": "bob"}).status_code == 409
+    assert alice.patch("/api/account", json={"username": "no spaces"}).status_code == 422
+
+    renamed = alice.patch("/api/account", json={"username": "Alicia"})
+    assert renamed.status_code == 200
+    assert renamed.json()["username"] == "alicia"
+    # Still signed in, still the owner of their pages, and the new name signs in.
+    assert alice.get(f"/api/pages/{page['id']}").json()["owner_name"] == "alicia"
+    assert client_factory().login("alicia").status_code == 200
+    assert client_factory().login("alice").status_code == 401
 
 
 def test_security_headers(alice):

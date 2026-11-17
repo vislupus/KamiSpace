@@ -219,7 +219,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# --- MindDock -----------------------------------------------------------
+# --- KamiSpace -----------------------------------------------------------
 # All runtime state (database, uploads, backups, logs, temp files) lives in
 # data/ and must never be committed.
 /data/*
@@ -237,6 +237,6 @@ node_modules/
 frontend/test-results/
 frontend/playwright-report/
 
-# The built frontend bundle IS committed so that running MindDock needs no
+# The built frontend bundle IS committed so that running KamiSpace needs no
 # Node.js. The generic "dist/" rule above would otherwise hide it.
 !/static/dist/

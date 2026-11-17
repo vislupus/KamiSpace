@@ -1,7 +1,7 @@
 // Which pages are expanded in the sidebar (remembered per browser).
 import { storageGet, storageSet } from '../lib/util.js';
 
-const KEY = 'minddock.expanded';
+const KEY = 'kamispace.expanded';
 const expanded = new Set(storageGet(KEY, []));
 
 function persist() {

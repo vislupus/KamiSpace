@@ -12,21 +12,18 @@ class Body(BaseModel):
 
 
 class LoginIn(Body):
-    identifier: str = Field(min_length=1, max_length=254)
+    username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=1024)
 
 
 class RegisterIn(Body):
     username: str = Field(max_length=64)
-    email: str = Field(max_length=254)
-    display_name: str = Field(default="", max_length=120)
     password: str = Field(max_length=1024)
     invite: str | None = Field(default=None, max_length=128)
 
 
 class AccountUpdateIn(Body):
-    display_name: str | None = Field(default=None, max_length=120)
-    email: str | None = Field(default=None, max_length=254)
+    username: str = Field(max_length=64)
 
 
 class PasswordChangeIn(Body):
@@ -37,6 +34,8 @@ class PasswordChangeIn(Body):
 class PageCreateIn(Body):
     workspace_id: int | None = None
     parent_id: int | None = None
+    # Add a link to the new page at the end of its parent (as Notion does).
+    link_in_parent: bool = True
     title: str = Field(default="", max_length=1000)
     icon: str | None = Field(default=None, max_length=32)
     content: dict[str, Any] | None = None
@@ -46,6 +45,11 @@ class PageMetaIn(Body):
     title: str | None = Field(default=None, max_length=1000)
     icon: str | None = Field(default=None, max_length=32)
     cover_attachment_id: str | None = Field(default=None, max_length=32)
+    cover_position: int | None = Field(default=None, ge=0, le=100)
+    font: Literal["default", "serif", "mono"] | None = None
+    small_text: bool | None = None
+    full_width: bool | None = None
+    locked: bool | None = None
 
 
 class ContentSaveIn(Body):
@@ -69,10 +73,6 @@ class ShareIn(Body):
     role: Literal["viewer", "editor"]
 
 
-class CaptureIn(Body):
-    text: str = Field(min_length=1, max_length=20_000)
-
-
 class WorkspaceIn(Body):
     name: str = Field(min_length=1, max_length=120)
 
@@ -83,15 +83,12 @@ class MemberIn(Body):
 
 class UserCreateIn(Body):
     username: str = Field(max_length=64)
-    email: str = Field(max_length=254)
-    display_name: str = Field(default="", max_length=120)
     password: str = Field(max_length=1024)
     is_admin: bool = False
 
 
 class UserUpdateIn(Body):
-    display_name: str | None = Field(default=None, max_length=120)
-    email: str | None = Field(default=None, max_length=254)
+    username: str | None = Field(default=None, max_length=64)
     is_admin: bool | None = None
     is_active: bool | None = None
 
@@ -101,9 +98,16 @@ class PasswordResetIn(Body):
 
 
 class InviteIn(Body):
-    email: str | None = Field(default=None, max_length=254)
     is_admin: bool = False
 
 
 class AppSettingsIn(Body):
     allow_registration: bool | None = None
+
+
+class TaskToggleIn(Body):
+    checked: bool
+
+
+class UrlIn(Body):
+    url: str = Field(min_length=1, max_length=2048)
