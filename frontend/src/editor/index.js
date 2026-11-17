@@ -45,7 +45,7 @@ function placeholderFor({ node, editor }) {
 }
 
 /** Extensions that define the document schema (shared with read-only previews). */
-function schemaExtensions(context) {
+function schemaExtensions(context, upload = null) {
   return [
     AppContext.configure(context ?? {}),
     StarterKit.configure({
@@ -72,7 +72,7 @@ function schemaExtensions(context) {
     ToggleContent,
     Columns,
     Column,
-    ImageBlock,
+    ImageBlock.configure({ upload }),
     Attachment,
     Video,
     Audio,
@@ -129,7 +129,7 @@ export function createEditor({
 
   const editor = new Editor({
     element,
-    extensions: [...schemaExtensions(context), LinkEditor, ...interactive],
+    extensions: [...schemaExtensions(context, editable ? upload : null), LinkEditor, ...interactive],
     content,
     editable,
     injectCSS: false,

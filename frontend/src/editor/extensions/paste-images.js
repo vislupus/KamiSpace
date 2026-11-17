@@ -8,7 +8,7 @@
 //   data:    → decoded directly
 //   https:// → fetched by the server (when that is enabled)
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, PluginKey, Selection } from '@tiptap/pm/state';
 import { toast } from '../../lib/toast.js';
 import { appContext } from './app-context.js';
 
@@ -163,6 +163,13 @@ export const PasteImages = Extension.create({
               notice.dismiss();
               if (view.isDestroyed) return;
               view.pasteHTML(ready);
+              // Pasted content that ends with a picture leaves that picture
+              // selected; carry on writing below it instead.
+              const { selection, doc } = view.state;
+              if (selection instanceof NodeSelection) {
+                const after = Selection.findFrom(doc.resolve(selection.to), 1, true);
+                if (after) view.dispatch(view.state.tr.setSelection(after));
+              }
               if (failed) {
                 toast(
                   `${failed} image${failed === 1 ? '' : 's'} could not be imported and ${failed === 1 ? 'was' : 'were'} left out`,

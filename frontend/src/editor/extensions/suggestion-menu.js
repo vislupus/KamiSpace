@@ -9,8 +9,9 @@ import { positionElement } from '../../lib/popover.js';
  * @param {(item) => Node} options.renderItem  row contents
  * @param {string} options.emptyText
  * @param {(view) => void} options.onEscape
+ * @param {(item) => string} [options.groupOf]  section an item belongs to (shown as headings)
  */
-export function createSuggestionRenderer({ className, renderItem, emptyText, onEscape }) {
+export function createSuggestionRenderer({ className, renderItem, emptyText, onEscape, groupOf }) {
   return () => {
     let el = null;
     let list = null;
@@ -25,14 +26,24 @@ export function createSuggestionRenderer({ className, renderItem, emptyText, onE
 
     function highlight(index) {
       active = index;
-      [...list.children].forEach((child, i) => child.classList.toggle('is-active', i === active));
-      list.children[active]?.scrollIntoView({ block: 'nearest' });
+      const rows = list.querySelectorAll('.slash-item');
+      rows.forEach((child, i) => child.classList.toggle('is-active', i === active));
+      // Keep the section heading in view together with its first row.
+      const row = rows[active];
+      const before = row?.previousElementSibling;
+      if (before?.classList.contains('slash-group')) before.scrollIntoView({ block: 'nearest' });
+      row?.scrollIntoView({ block: 'nearest' });
     }
 
     function render() {
       list.replaceChildren(
         ...(items.length
-          ? items.map((item, index) => {
+          ? items.flatMap((item, index) => {
+              const group = groupOf?.(item, props) ?? null;
+              const heading =
+                group && group !== (index ? groupOf(items[index - 1], props) : null)
+                  ? h('div', { class: 'slash-group' }, group)
+                  : null;
               const row = h(
                 'div',
                 {
@@ -50,7 +61,7 @@ export function createSuggestionRenderer({ className, renderItem, emptyText, onE
               row.addEventListener('mousemove', () => {
                 if (active !== index) highlight(index);
               });
-              return row;
+              return heading ? [heading, row] : [row];
             })
           : [h('div', { class: 'slash-empty' }, emptyText)]),
       );

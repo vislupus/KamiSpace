@@ -131,9 +131,22 @@ The built bundle is committed so that installing KamiSpace needs only uv.
   plus its extension.
 - Markdown shortcuts are ProseMirror input rules. They only match at the start
   of a text block, are undoable, and do not fire inside code.
-- `extensions/block-handle.js` positions one shared handle next to the block
-  under the pointer (no per-block DOM). Dragging computes the target gap from
-  the pointer's vertical position and performs the move as one transaction.
+- `block-ops.js` defines what a **block** is and every operation on one. A
+  block is a node directly inside a container (the page, a toggle body, a
+  column, a callout, a quote) or any list item; lists, column layouts and the
+  two halves of a toggle are structure. Moving, converting ("turn into"),
+  duplicating and deleting all work on a document position, at any depth.
+  Moves between lists and containers rewrap the block (a list item dropped
+  among paragraphs becomes a one-item list, a paragraph dropped into a list
+  splits or joins it), in one transaction.
+- `extensions/block-handle.js` positions one shared handle next to the
+  innermost block under the pointer (no per-block DOM). Dragging computes the
+  target gap from the pointer position — including "into this toggle" — and
+  performs the move as one transaction.
+- `extensions/image.js` renders pictures with a node view: resize handles
+  (width is stored as a percentage), alignment, caption and a hover toolbar.
+- `extensions/link-editor.js`: hover card, click-to-open, the Ctrl+K editor
+  with page suggestions, and the "Paste as" menu for pasted addresses.
 - `extensions/slash.js`, `bubble-toolbar.js`, `link-editor.js`,
   `table-toolbar.js` are contextual UI — nothing is permanently visible.
 - `extensions/uploads.js` handles paste, drop and file pickers, with
@@ -184,7 +197,7 @@ frame), no long tasks.
   themselves when they regain focus.
 - **Full version snapshots** cost disk space on very large, frequently edited
   pages. Versions disappear only when their page is permanently deleted.
-- **Block handles are top-level.** Blocks inside lists, columns and toggles
-  are moved with the keyboard.
+- **Tables are one block.** Rows and cells are edited with the table toolbar;
+  they have no handles of their own.
 - **Toggle state is part of the document.** Opening or closing a toggle is an
   edit (saved, versioned) — simple and predictable, at the cost of a save.

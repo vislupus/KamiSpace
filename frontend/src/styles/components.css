@@ -14,8 +14,9 @@
   white-space: nowrap;
   transition: background var(--fast), border-color var(--fast);
 }
+/* Opaque, so a button stays readable on top of a picture (page covers). */
 .button:hover {
-  background: var(--bg-hover);
+  background: var(--hover-solid);
 }
 .button:disabled {
   opacity: 0.5;
@@ -43,6 +44,9 @@
   border-color: transparent;
   background: transparent;
   color: var(--text-2);
+}
+.button-ghost:hover {
+  background: var(--bg-hover);
 }
 .button-small {
   height: 26px;

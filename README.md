@@ -263,17 +263,25 @@ Backspace right after a conversion — or Ctrl+Z — turns it back.
 `/video` `/audio` `/file` `/embed` `/bookmark` `/equation` `/inlineequation`
 `/link`
 
-**Blocks** — hover a block to reveal its controls in the left margin:
-`+` adds a block below (Alt+click: above); the grip ⠿ drags the block to a
-new position, or opens a menu on click: *Turn into*, *Duplicate*, *Move up /
-down*, *Delete* (and *Add a column* / *Remove columns* on a column layout).
+**Blocks** — every line is a block, wherever it lives: on the page, inside a
+toggle, a column, a callout, a quote, or as an item of a list. Hover a block
+to reveal its controls to the left of it: `+` adds a block below (Alt+click:
+above); the grip ⠿ drags the block to a new position — also into or out of a
+toggle or a column — or opens a menu on click: *Turn into*, *Duplicate*,
+*Move up / down*, *Delete* (and *Add a column* / *Remove columns* inside a
+column layout). "Turn into" and the slash menu change the block in place, so
+a line inside a toggle stays inside it.
 
 **Selecting text** shows a small toolbar: block type, bold, italic, underline,
 strikethrough, inline code, text and background colour, link, inline equation.
 
 **Toggles** hide the blocks beneath a summary line. A toggle heading is a
 heading (H1–H3) that folds its section. Click the triangle or press
-Ctrl+Enter; the state is saved with the page.
+Ctrl+Enter; the state is saved with the page. Enter on the summary starts
+the first line inside; Enter on an empty last line leaves the toggle. Tab
+moves the current block into the toggle above it, Shift+Tab takes it out
+again, and blocks can be dragged in (drop on the summary, slightly indented,
+or between the lines inside) and out.
 
 **Columns** put blocks side by side (2–5 columns); on a phone they stack.
 
@@ -291,6 +299,17 @@ current title and icon of the page they point to.
 audio get a player, PDFs can be previewed in place, other files become
 download cards. `/embed` shows a web page, YouTube or Vimeo video in a
 sandboxed frame; `/bookmark` makes a link card with the page's title.
+
+**Pictures** are centred. Hover one for its controls: drag the handles on its
+sides to resize it, and use the small toolbar for a caption, alignment (left,
+centre, right), the full-size view, download, replace and delete.
+
+**Links** — hover a link to see where it goes, with buttons to copy, edit or
+remove it; click it to open it. Ctrl+K on selected text adds a link: paste an
+address, or type a few letters to pick one of your pages. Pasting a web
+address into an empty spot makes a link and offers to turn it into a bookmark
+card or an embed instead ("Paste as"); pasting it over selected text links
+that text.
 
 **Pasting from Word** (and other rich sources) keeps the formatting *and* the
 pictures: each picture is uploaded and placed where it was in the text.
@@ -328,7 +347,7 @@ down (or use the arrow keys), then *Save position*.
 | Ctrl+Alt+1…3 | Heading 1…3 |
 | Alt+Shift+↑ / ↓ | Move the block (or list item) up / down |
 | Ctrl+D | Duplicate the block |
-| Tab / Shift+Tab | Indent / outdent a list item |
+| Tab / Shift+Tab | Indent / outdent a list item; move a block into / out of the toggle above it |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | Alt+N | New page |
 | Ctrl+\\ | Show / hide the sidebar |
@@ -374,8 +393,9 @@ pages, versions, conflicts, uploads, search, backups, migrations):
 uv run pytest
 ```
 
-Browser tests (Playwright, 125+ tests: Markdown shortcuts, slash commands,
-block drag-and-drop, toolbar, links, uploads, autosave, conflicts, responsive
+Browser tests (Playwright, 140+ tests: Markdown shortcuts, slash commands,
+block drag-and-drop (also into toggles), pictures, toolbar, links, uploads,
+autosave, conflicts, responsive
 layout at laptop sizes, long-document performance):
 
 ```bash
@@ -438,8 +458,9 @@ automated tests.
 | Editor blocks | Paragraph, headings 1–3, bulleted / numbered / to-do lists (nested), toggle list and toggle headings, quote, code block with syntax highlighting (22 languages), divider, callout (5 styles), table, columns (2–5), image, video, audio, file attachment, embed (web page, YouTube, Vimeo), web bookmark, block and inline equations (KaTeX), page link, page mention |
 | Text formatting | Bold, italic, underline, strikethrough, inline code, links, 9 text colours and 9 background colours (both themes) |
 | Editor input | Markdown block and inline shortcuts, slash menu (keyboard driven, filtered, no network), `@` / `[[` page picker, undo/redo across conversions, paste of rich and plain text, paste from Word with pictures |
-| Block handling | `+` button, drag handle with drop indicator, block menu (turn into, duplicate, move, delete), keyboard move/duplicate, floating selection toolbar, link editor |
-| Files | Drag-and-drop and paste upload with placeholders, inline images (lazy loaded), video and audio players with seeking, PDF preview, download cards; type allow-list with content sniffing, size limit, generated storage names, access-controlled downloads |
+| Block handling | `+` button, drag handle with drop indicator and block menu (turn into, duplicate, move, delete) for every block at any depth — inside toggles, columns, callouts, quotes and for single list items; keyboard move/duplicate; floating selection toolbar |
+| Links | Hover card (address, copy, edit, remove), click to open, Ctrl+K editor with page suggestions, "Paste as" URL / bookmark / embed |
+| Files | Drag-and-drop and paste upload with placeholders, images with resize handles, alignment, caption and full-size view (lazy loaded), video and audio players with seeking, PDF preview, download cards; type allow-list with content sniffing, size limit, generated storage names, access-controlled downloads |
 | Pages | Unlimited nesting, sub-pages linked in their parent, icon, cover image with repositioning, appearance (font, small text, full width), lock, create / rename / move (dialog and sidebar drag-and-drop) / duplicate / delete, recycle bin, favourites, recents, breadcrumbs, library of all pages |
 | Markdown | Export a page as `.md`, import `.md` files as pages, copy page contents |
 | Tasks | Assign to-do items to people, due dates, "My tasks" across all pages with a counter, tick off from the list |
@@ -456,13 +477,14 @@ automated tests.
 
 | Area | Limit |
 |---|---|
-| Block handles | Handles address top-level blocks. Blocks inside columns, toggles, callouts and lists are moved with Alt+Shift+↑/↓ (and cut/paste), not by dragging |
+| Block handles | A table is one block: its rows and cells have their own toolbar, not handles. A column layout cannot be dropped inside another column |
 | Paste from Word | Pictures are recovered from the clipboard's RTF data, which is how Word provides them; tested with clipboard data in Word's format, not with every Word version. Pictures that cannot be recovered are left out with a notice |
 | Embeds | Many sites refuse to be shown inside another page; for those the frame stays empty and the link below it opens the site. Only `https` pages can be embedded |
 | Web bookmarks | Title and description are fetched by the server, which therefore needs outbound internet access (and no proxy in between). Without it the card shows the address |
 | Markdown export | Pictures and files are referenced, not bundled, so a `.md` file imports with its pictures only on the same KamiSpace instance. Text colours, assignees and due dates are not written to Markdown |
 | Tasks | The assignee is not notified (nothing is emailed); they see the task in "My tasks" |
-| Images | Shown at their natural size up to the text width; there is no resize or alignment control yet |
+| Images | Width is kept as a percentage of the text column (10–100 %). Pictures cannot be cropped, and text does not wrap around them |
+| Links | Clicking a link opens it (as in Notion); to change its text, edit around it or use *Edit link* on the hover card. The hover card needs a pointer |
 | Touch devices | Reading and typing work and the layout adapts, but block handles and drag-and-drop need a pointer |
 | Offline | Unsaved edits are retried while the tab stays open; they are not persisted across a browser crash |
 | Browsers | Automated tests run in Chromium. Firefox and Safari use the same standards-based code but are not covered by the automated suite |

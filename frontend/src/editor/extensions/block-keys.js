@@ -1,10 +1,29 @@
-// Keyboard shortcuts for moving and duplicating blocks.
+// Keyboard shortcuts for moving, duplicating and nesting blocks.
 import { Extension } from '@tiptap/core';
 import { Selection } from '@tiptap/pm/state';
-import { currentBlockPos, duplicateBlock, moveNode, topLevelBlockPos } from '../block-ops.js';
+import {
+  currentBlockPos,
+  duplicateBlock,
+  indentIntoToggle,
+  isItem,
+  moveBlockByKeyboard,
+  outdentFromToggle,
+} from '../block-ops.js';
+
+/** Places where Tab already means something else. */
+function tabIsTaken(editor) {
+  const { $from } = editor.state.selection;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.type.spec.code || isItem(node) || node.type.name === 'table') return true;
+  }
+  return false;
+}
 
 export const BlockKeys = Extension.create({
   name: 'blockKeys',
+  // After the list, table and code-block bindings for Tab.
+  priority: 50,
 
   addOptions() {
     return { onExitTop: null };
@@ -13,11 +32,7 @@ export const BlockKeys = Extension.create({
   addKeyboardShortcuts() {
     const move = (direction) => () => {
       if (!this.editor.isEditable) return false;
-      const itemPos = currentBlockPos(this.editor.state);
-      // Inside a list, move the item; at the edge of the list, move the list.
-      if (moveNode(this.editor, itemPos, direction)) return true;
-      const blockPos = topLevelBlockPos(this.editor.state);
-      if (blockPos !== itemPos) moveNode(this.editor, blockPos, direction);
+      moveBlockByKeyboard(this.editor, direction);
       return true;
     };
     return {
@@ -25,7 +40,19 @@ export const BlockKeys = Extension.create({
       'Alt-Shift-ArrowDown': move(1),
       'Mod-d': () => {
         if (!this.editor.isEditable) return false;
-        return duplicateBlock(this.editor, topLevelBlockPos(this.editor.state));
+        return duplicateBlock(this.editor, currentBlockPos(this.editor.state));
+      },
+      // Tab nests the block under the toggle above it; Shift+Tab takes it out.
+      // Elsewhere Tab does nothing — it must never throw the focus out of the page.
+      Tab: () => {
+        if (!this.editor.isEditable || tabIsTaken(this.editor)) return false;
+        indentIntoToggle(this.editor);
+        return true;
+      },
+      'Shift-Tab': () => {
+        if (!this.editor.isEditable || tabIsTaken(this.editor)) return false;
+        outdentFromToggle(this.editor);
+        return true;
       },
       // From the very first line, ArrowUp leaves the editor for the title.
       ArrowUp: () => {

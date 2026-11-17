@@ -107,6 +107,59 @@ def test_image_and_attachment_ids_must_be_well_formed():
     assert extract_attachment_ids(cleaned) == {good}
 
 
+def test_image_layout_attributes_are_limited_to_known_values():
+    good = "cd" * 16
+    cleaned = sanitize_document(
+        wrap(
+            {
+                "type": "image",
+                "attrs": {
+                    "attachmentId": good,
+                    "width": 40,
+                    "align": "left",
+                    "caption": "Figure 1",
+                },
+            },
+            {
+                "type": "image",
+                "attrs": {
+                    "attachmentId": good,
+                    "width": 5000,
+                    "align": "float: right; position: fixed",
+                    "caption": "x" * 2000,
+                },
+            },
+            {"type": "image", "attrs": {"attachmentId": good}},
+        )
+    )
+    first, second, third = (node["attrs"] for node in cleaned["content"][:3])
+    assert (first["width"], first["align"], first["caption"]) == (40, "left", "Figure 1")
+    assert second["align"] == "center"
+    assert 10 <= second["width"] <= 100
+    assert len(second["caption"]) == 500
+    assert (third["width"], third["align"], third["caption"]) == (None, "center", None)
+    # Captions are searchable text.
+    assert "Figure 1" in extract_text(cleaned)
+
+
+def test_an_empty_toggle_body_is_kept():
+    document = wrap(
+        {
+            "type": "details",
+            "attrs": {"open": True, "level": 0},
+            "content": [
+                {"type": "detailsSummary", "content": [text_node("Empty")]},
+                {"type": "detailsContent"},
+            ],
+        }
+    )
+    cleaned = sanitize_document(document)
+    toggle = cleaned["content"][0]
+    assert toggle["type"] == "details"
+    assert [child["type"] for child in toggle["content"]] == ["detailsSummary", "detailsContent"]
+    assert not toggle["content"][1].get("content")
+
+
 def test_structure_is_preserved_for_supported_blocks():
     document = wrap(
         {"type": "heading", "attrs": {"level": 2}, "content": [text_node("Plan")]},
