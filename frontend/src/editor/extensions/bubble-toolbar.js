@@ -5,7 +5,7 @@ import { h, kbd } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 import { openMenu } from '../../lib/menu.js';
 import { openPopover, positionElement } from '../../lib/popover.js';
-import { CONVERTIBLE_BLOCKS, applyBlock, currentBlockLabel } from '../blocks.js';
+import { CONVERTIBLE_BLOCKS, applyBlock, currentBlockLabel, isBlockActive } from '../blocks.js';
 import { COLORS } from './colors.js';
 import { openLinkEditor } from './link-editor.js';
 
@@ -193,7 +193,7 @@ class BubbleToolbarView {
       items: CONVERTIBLE_BLOCKS.map((block) => ({
         label: block.title,
         icon: block.icon,
-        checked: block.isActive(editor),
+        checked: isBlockActive(editor, block),
         onSelect: () => applyBlock(editor, block),
       })),
       onClose: () => {

@@ -1,22 +1,22 @@
 // The block catalogue. Slash commands, the "+" button and the "Turn into"
 // menu are all generated from this list — adding a block type means adding an
 // entry here (plus its Tiptap extension and the server's allow-list).
-import { wrapSelectionIn } from './block-ops.js';
+import { blockKind, convertBlock, currentBlockPos, sameKind } from './block-ops.js';
 import { promptForBookmark } from './extensions/bookmark.js';
 import { promptForEmbed } from './extensions/embed.js';
 import { openLinkEditor } from './extensions/link-editor.js';
 import { insertSubPage } from './extensions/page-link.js';
 import { pickAndUploadFiles } from './extensions/uploads.js';
 
-const CONTAINERS = ['bulletList', 'orderedList', 'taskList', 'blockquote', 'callout', 'details'];
-
 /**
  * id          slash command name (/id)
- * convert     true when an existing block can be turned into this type
- * reset       clear wrapping nodes (lists, quotes) before applying
- * apply       (chain) => chain   — a Tiptap command chain step
+ * group       heading the block is listed under in the slash menu
+ * kind        for blocks an existing block can be turned into: what it becomes
+ *             (see convertBlock in block-ops.js)
+ * apply       (chain) => chain   — a Tiptap command chain step; for `kind`
+ *             blocks it is only the fallback where blocks cannot be converted
+ *             (inside table cells)
  * action      (editor) => void   — for blocks that need UI (file pickers…)
- * isActive    (editor) => boolean
  */
 export const BLOCKS = [
   {
@@ -25,11 +25,9 @@ export const BLOCKS = [
     description: 'Plain paragraph',
     icon: 'text',
     keywords: ['paragraph', 'plain', 'p'],
-    convert: true,
-    reset: true,
+    group: 'Basic blocks',
+    kind: { kind: 'text' },
     apply: (chain) => chain.setParagraph(),
-    isActive: (editor) =>
-      editor.isActive('paragraph') && !CONTAINERS.some((name) => editor.isActive(name)),
   },
   ...[1, 2, 3].map((level) => ({
     id: `h${level}`,
@@ -40,10 +38,9 @@ export const BLOCKS = [
     icon: `h${level}`,
     hint: '#'.repeat(level),
     keywords: ['heading', 'title', `heading${level}`, '#'.repeat(level)],
-    convert: true,
-    reset: true,
+    group: 'Basic blocks',
+    kind: { kind: 'heading', level },
     apply: (chain) => chain.setHeading({ level }),
-    isActive: (editor) => editor.isActive('heading', { level }),
   })),
   {
     id: 'bullet',
@@ -52,9 +49,9 @@ export const BLOCKS = [
     icon: 'list',
     hint: '-',
     keywords: ['bulleted', 'unordered', 'list', 'ul'],
-    convert: true,
+    group: 'Basic blocks',
+    kind: { kind: 'bullet' },
     apply: (chain) => chain.toggleBulletList(),
-    isActive: (editor) => editor.isActive('bulletList'),
   },
   {
     id: 'numbered',
@@ -63,9 +60,9 @@ export const BLOCKS = [
     icon: 'list-ordered',
     hint: '1.',
     keywords: ['ordered', 'number', 'list', 'ol'],
-    convert: true,
+    group: 'Basic blocks',
+    kind: { kind: 'numbered' },
     apply: (chain) => chain.toggleOrderedList(),
-    isActive: (editor) => editor.isActive('orderedList'),
   },
   {
     id: 'todo',
@@ -74,9 +71,9 @@ export const BLOCKS = [
     icon: 'list-todo',
     hint: '[]',
     keywords: ['todo', 'task', 'checklist', 'checkbox', 'check', 'assign'],
-    convert: true,
+    group: 'Basic blocks',
+    kind: { kind: 'todo' },
     apply: (chain) => chain.toggleTaskList(),
-    isActive: (editor) => editor.isActive('taskList'),
   },
   {
     id: 'toggle',
@@ -85,10 +82,8 @@ export const BLOCKS = [
     icon: 'toggle',
     hint: '>>',
     keywords: ['toggle', 'collapse', 'expand', 'details', 'fold', 'accordion'],
-    convert: true,
-    toggle: true,
-    apply: (chain) => chain.setToggle(0),
-    isActive: (editor) => editor.isActive('details', { level: 0 }),
+    group: 'Basic blocks',
+    kind: { kind: 'toggle', level: 0 },
   },
   ...[1, 2, 3].map((level) => ({
     id: `toggleh${level}`,
@@ -96,10 +91,8 @@ export const BLOCKS = [
     description: 'A heading that hides its content',
     icon: `h${level}`,
     keywords: ['toggle', 'collapse', 'heading', `toggle${level}`, 'fold'],
-    convert: true,
-    toggle: true,
-    apply: (chain) => chain.setToggle(level),
-    isActive: (editor) => editor.isActive('details', { level }),
+    group: 'Basic blocks',
+    kind: { kind: 'toggle', level },
   })),
   {
     id: 'quote',
@@ -108,9 +101,9 @@ export const BLOCKS = [
     icon: 'quote',
     hint: '>',
     keywords: ['blockquote', 'citation'],
-    convert: true,
-    apply: (chain) => chain.command(wrapSelectionIn('blockquote')),
-    isActive: (editor) => editor.isActive('blockquote'),
+    group: 'Basic blocks',
+    kind: { kind: 'quote' },
+    apply: (chain) => chain.wrapIn('blockquote'),
   },
   {
     id: 'code',
@@ -119,10 +112,9 @@ export const BLOCKS = [
     icon: 'code-block',
     hint: '```',
     keywords: ['codeblock', 'snippet', 'pre', 'programming'],
-    convert: true,
-    reset: true,
+    group: 'Basic blocks',
+    kind: { kind: 'code' },
     apply: (chain) => chain.setCodeBlock(),
-    isActive: (editor) => editor.isActive('codeBlock'),
   },
   {
     id: 'callout',
@@ -130,12 +122,13 @@ export const BLOCKS = [
     description: 'Highlighted note',
     icon: 'info',
     keywords: ['note', 'info', 'warning', 'tip', 'admonition', 'highlight'],
-    convert: true,
-    apply: (chain) => chain.command(wrapSelectionIn('callout')),
-    isActive: (editor) => editor.isActive('callout'),
+    group: 'Basic blocks',
+    kind: { kind: 'callout' },
+    apply: (chain) => chain.wrapIn('callout'),
   },
   {
     id: 'divider',
+    group: 'Basic blocks',
     title: 'Divider',
     description: 'Horizontal line',
     icon: 'minus',
@@ -145,6 +138,7 @@ export const BLOCKS = [
   },
   {
     id: 'table',
+    group: 'Basic blocks',
     title: 'Table',
     description: '3 × 3 table with a header row',
     icon: 'table',
@@ -153,6 +147,7 @@ export const BLOCKS = [
   },
   ...[2, 3, 4].map((count) => ({
     id: `columns${count}`,
+    group: 'Layout',
     title: `${count} columns`,
     description: 'Blocks side by side',
     icon: 'columns-2',
@@ -161,6 +156,7 @@ export const BLOCKS = [
   })),
   {
     id: 'page',
+    group: 'Pages',
     title: 'Page',
     description: 'New sub-page, linked here',
     icon: 'file-text',
@@ -169,6 +165,7 @@ export const BLOCKS = [
   },
   {
     id: 'linkpage',
+    group: 'Pages',
     title: 'Link to page',
     description: 'Mention another page (or type @)',
     icon: 'at',
@@ -178,6 +175,7 @@ export const BLOCKS = [
   },
   {
     id: 'image',
+    group: 'Media',
     title: 'Image',
     description: 'Upload a picture',
     icon: 'image',
@@ -186,6 +184,7 @@ export const BLOCKS = [
   },
   {
     id: 'video',
+    group: 'Media',
     title: 'Video',
     description: 'Upload a video file',
     icon: 'video',
@@ -194,6 +193,7 @@ export const BLOCKS = [
   },
   {
     id: 'audio',
+    group: 'Media',
     title: 'Audio',
     description: 'Upload a sound file',
     icon: 'audio',
@@ -202,6 +202,7 @@ export const BLOCKS = [
   },
   {
     id: 'file',
+    group: 'Media',
     title: 'File',
     description: 'Attach a PDF or document',
     icon: 'paperclip',
@@ -210,6 +211,7 @@ export const BLOCKS = [
   },
   {
     id: 'embed',
+    group: 'Media',
     title: 'Embed',
     description: 'Web page, YouTube or Vimeo',
     icon: 'embed',
@@ -218,6 +220,7 @@ export const BLOCKS = [
   },
   {
     id: 'bookmark',
+    group: 'Media',
     title: 'Web bookmark',
     description: 'Link card with title and description',
     icon: 'bookmark',
@@ -226,6 +229,7 @@ export const BLOCKS = [
   },
   {
     id: 'equation',
+    group: 'Advanced',
     title: 'Block equation',
     description: 'Display math (KaTeX)',
     icon: 'equation',
@@ -234,6 +238,7 @@ export const BLOCKS = [
   },
   {
     id: 'inlineequation',
+    group: 'Advanced',
     title: 'Inline equation',
     description: 'Math inside a sentence',
     icon: 'equation',
@@ -243,6 +248,7 @@ export const BLOCKS = [
   },
   {
     id: 'link',
+    group: 'Advanced',
     title: 'Link',
     description: 'Insert a web link',
     icon: 'link',
@@ -251,7 +257,19 @@ export const BLOCKS = [
   },
 ];
 
-export const CONVERTIBLE_BLOCKS = BLOCKS.filter((block) => block.convert);
+export const CONVERTIBLE_BLOCKS = BLOCKS.filter((block) => block.kind);
+
+/** The kind of the block the selection is in (see blockKind), or null. */
+function currentKind(editor) {
+  const { doc } = editor.state;
+  const pos = currentBlockPos(editor.state);
+  const node = doc.nodeAt(pos);
+  return node ? blockKind(node, doc.resolve(pos).parent) : null;
+}
+
+export function isBlockActive(editor, block) {
+  return !!block.kind && sameKind(currentKind(editor), block.kind);
+}
 
 /** Apply a block type at the current selection. */
 export function applyBlock(editor, block) {
@@ -259,17 +277,17 @@ export function applyBlock(editor, block) {
     block.action(editor);
     return;
   }
-  if (block.isActive?.(editor)) {
-    editor.commands.focus();
-    return;
+  if (block.kind) {
+    // Convert the block the caret is in — wherever it is nested.
+    if (convertBlock(editor, currentBlockPos(editor.state), block.kind)) return;
+    if (!block.apply) return;
   }
-  let chain = editor.chain().focus();
-  // Leaving a toggle for another block type: its summary becomes plain text first.
-  if (block.convert && !block.toggle && editor.isActive('detailsSummary')) {
-    chain = chain.unsetDetails();
-  }
-  if (block.reset || (block.toggle && !editor.isActive('details'))) chain = chain.clearNodes();
-  block.apply(chain).run();
+  block.apply(editor.chain().focus()).run();
+}
+
+/** Turn the block at a known position into another kind (block menu). */
+export function applyBlockAt(editor, pos, block) {
+  return convertBlock(editor, pos, block.kind);
 }
 
 export function filterBlocks(query) {
@@ -291,5 +309,5 @@ export function filterBlocks(query) {
 }
 
 export function currentBlockLabel(editor) {
-  return CONVERTIBLE_BLOCKS.find((block) => block.isActive(editor))?.title ?? 'Text';
+  return CONVERTIBLE_BLOCKS.find((block) => isBlockActive(editor, block))?.title ?? 'Text';
 }

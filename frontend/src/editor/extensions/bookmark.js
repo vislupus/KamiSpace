@@ -102,7 +102,11 @@ export async function promptForBookmark(editor) {
     placeholder: 'Paste a web address to bookmark…',
     button: 'Bookmark',
   });
-  if (!url) return;
+  if (url) await insertBookmark(editor, url);
+}
+
+/** Insert a bookmark card for `url`, then fill in its title and description. */
+export async function insertBookmark(editor, url) {
   const type = editor.schema.nodes.bookmark;
   insertBlockNode(editor, type.create({ url }));
 

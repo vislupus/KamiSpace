@@ -147,12 +147,13 @@ test.describe('Columns', () => {
     expect(stored.content[0].type).toBe('columns');
     expect(stored.content[0].content.map((column) => column.type)).toEqual(['column', 'column']);
 
-    await columns.hover({ position: { x: 30, y: 8 } });
+    // Any block inside the layout offers the layout actions in its menu.
+    await columns.locator('.column').first().locator('p').hover({ position: { x: 30, y: 8 } });
     await page.locator('.block-grip').click();
     await page.locator('.menu-item', { hasText: 'Add a column' }).click();
     await expect(columns.locator('.column')).toHaveCount(3);
 
-    await columns.hover({ position: { x: 30, y: 8 } });
+    await columns.locator('.column').nth(1).locator('h1').hover({ position: { x: 20, y: 8 } });
     await page.locator('.block-grip').click();
     await page.locator('.menu-item', { hasText: 'Remove columns' }).click();
     await expect(editor(page).locator('.columns')).toHaveCount(0);
@@ -628,8 +629,8 @@ test.describe('To-do items and My tasks', () => {
     const ids = stored.content
       .filter((node) => node.type === 'taskList')
       .flatMap((list) => list.content.map((item) => item.attrs.taskId));
-    expect(ids).toHaveLength(4);
-    expect(new Set(ids).size).toBe(4);
+    expect(ids).toHaveLength(3); // one, two and the duplicate of "two"
+    expect(new Set(ids).size).toBe(3);
     // Saving again does not shuffle the ids.
     await focusEditor(page);
     await page.keyboard.type('x');

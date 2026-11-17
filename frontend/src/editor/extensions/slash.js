@@ -35,6 +35,8 @@ export const SlashCommands = Extension.create({
         render: createSuggestionRenderer({
           className: '',
           emptyText: 'No matching blocks',
+          // Sections only make sense for the full list, not for search results.
+          groupOf: (item, props) => (props.query ? null : item.group),
           onEscape: (view) => exitSuggestion(view, slashKey),
           renderItem: (item) => [
             h('span', { class: 'slash-icon' }, icon(item.icon, 18)),

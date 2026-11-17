@@ -225,17 +225,19 @@ test.describe('Selection toolbar and links', () => {
       ],
     };
     await openNewPage(page, session, { content: doc(linked) });
-    await editor(page).locator('a').click();
-    const preview = page.locator('.link-preview');
-    await expect(preview).toContainText('https://old.example');
-    await preview.getByRole('button', { name: 'Edit link' }).click();
+    // Hovering a link shows a card with its address and actions.
+    await editor(page).locator('a').hover();
+    const card = page.locator('.link-hover');
+    await expect(card).toContainText('https://old.example');
+    await card.getByRole('button', { name: 'Edit link' }).click();
+    await expect(card).toHaveCount(0);
     await page.locator('.link-editor input').fill('https://new.example');
     await page.keyboard.press('Enter');
     await expect(editor(page).locator('a')).toHaveAttribute('href', 'https://new.example');
 
-    await page.waitForTimeout(600); // otherwise this counts as a double click
-    await editor(page).locator('a').click();
-    await page.locator('.link-preview').getByRole('button', { name: 'Remove link' }).click();
+    await page.mouse.move(5, 5);
+    await editor(page).locator('a').hover();
+    await page.locator('.link-hover').getByRole('button', { name: 'Remove link' }).click();
     await expect(editor(page).locator('a')).toHaveCount(0);
     await expect(editor(page).locator('p').first()).toHaveText('docs');
   });

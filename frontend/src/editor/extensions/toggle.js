@@ -1,9 +1,20 @@
 // Toggles: a summary line that shows or hides the blocks beneath it. With a
 // level they are toggle headings (H1–H3). Built on Tiptap's Details nodes;
 // the open state is part of the document, so it survives a reload.
+//
+// The blocks inside a toggle are ordinary blocks: they have their own handle,
+// can be dragged in and out, and can be turned into any other block type.
 import { InputRule } from '@tiptap/core';
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details';
-import { TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { blockKind, convertBlockInTransaction, currentBlockPos } from '../block-ops.js';
+
+function enclosingToggle($pos, type) {
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if ($pos.node(depth).type === type) return { node: $pos.node(depth), pos: $pos.before(depth), depth };
+  }
+  return null;
+}
 
 export const Toggle = Details.extend({
   addAttributes() {
@@ -35,76 +46,86 @@ export const Toggle = Details.extend({
   addCommands() {
     return {
       ...this.parent?.(),
-      /**
-       * Turn the current text block into a toggle whose summary is that text.
-       * Inside an existing toggle only the heading level changes.
-       */
+      /** Turn the current block into a toggle (its text becomes the summary). */
       setToggle:
         (level = 0) =>
-        ({ state, dispatch }) => {
-          const { schema, selection } = state;
-          const { $from } = selection;
-          for (let depth = $from.depth; depth > 0; depth -= 1) {
-            if ($from.node(depth).type === this.type) {
-              if (dispatch) {
-                const pos = $from.before(depth);
-                dispatch(
-                  state.tr.setNodeMarkup(pos, undefined, { ...$from.node(depth).attrs, level }),
-                );
-              }
-              return true;
-            }
-          }
-          const block = $from.parent;
-          if (!block.isTextblock || $from.depth === 0) return false;
-          const container = $from.node(-1);
-          const index = $from.index(-1);
-          if (!container.canReplaceWith(index, index + 1, this.type)) return false;
-          if (dispatch) {
-            const summaryContent = block.type.spec.code
-              ? block.textContent
-                ? schema.text(block.textContent)
-                : undefined
-              : block.content;
-            const node = this.type.create({ open: true, level }, [
-              schema.nodes.detailsSummary.create(null, summaryContent),
-              schema.nodes.detailsContent.create(null, schema.nodes.paragraph.create()),
-            ]);
-            const pos = $from.before();
-            const tr = state.tr.replaceWith(pos, pos + block.nodeSize, node);
-            // Caret at the end of the summary.
-            const summaryEnd = pos + 2 + node.firstChild.content.size;
-            tr.setSelection(TextSelection.create(tr.doc, summaryEnd));
-            dispatch(tr.scrollIntoView());
-          }
-          return true;
+        ({ tr, dispatch }) => {
+          // Works on the transaction of the surrounding command chain.
+          const pos = currentBlockPos(tr);
+          const node = tr.doc.nodeAt(pos);
+          if (!node || !blockKind(node, tr.doc.resolve(pos).parent)) return false;
+          if (!dispatch) return true;
+          return convertBlockInTransaction(tr, pos, { kind: 'toggle', level });
         },
     };
   },
 
   addKeyboardShortcuts() {
+    const inherited = this.parent?.() ?? {};
     return {
-      ...this.parent?.(),
+      ...inherited,
       // Notion's shortcut for a toggle list.
       'Mod-Alt-7': () => this.editor.commands.setToggle(0),
       // Open or close the toggle the caret is in.
       'Mod-Enter': () => {
         const { state, view } = this.editor;
-        const { $from } = state.selection;
-        for (let depth = $from.depth; depth > 0; depth -= 1) {
-          const node = $from.node(depth);
-          if (node.type === this.type) {
-            const pos = $from.before(depth);
-            const tr = state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, open: !node.attrs.open });
-            if (node.attrs.open) {
-              // Closing: keep the caret visible, in the summary.
-              tr.setSelection(TextSelection.create(tr.doc, pos + 2 + node.firstChild.content.size));
-            }
-            view.dispatch(tr);
-            return true;
-          }
+        const found = enclosingToggle(state.selection.$from, this.type);
+        if (!found) return false;
+        const { node, pos } = found;
+        const tr = state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, open: !node.attrs.open });
+        if (node.attrs.open) {
+          // Closing: keep the caret visible, in the summary.
+          tr.setSelection(TextSelection.create(tr.doc, pos + 2 + node.firstChild.content.size));
         }
-        return false;
+        view.dispatch(tr);
+        return true;
+      },
+      Enter: (context) => {
+        const { state, view } = this.editor;
+        const { selection, schema } = state;
+        const { $from } = selection;
+        // An empty line at the end of a toggle's body: Enter leaves the toggle.
+        if (
+          selection.empty &&
+          $from.depth >= 2 &&
+          $from.parent.type.name === 'paragraph' &&
+          $from.parent.content.size === 0 &&
+          $from.node(-1).type === schema.nodes.detailsContent &&
+          $from.index(-1) === $from.node(-1).childCount - 1
+        ) {
+          const toggleEnd = $from.after($from.depth - 2);
+          const tr = state.tr.delete($from.before(), $from.after());
+          const at = tr.mapping.map(toggleEnd);
+          tr.insert(at, schema.nodes.paragraph.create());
+          tr.setSelection(TextSelection.create(tr.doc, at + 1));
+          view.dispatch(tr.scrollIntoView());
+          return true;
+        }
+        return inherited.Enter ? inherited.Enter(context) : false;
+      },
+      Backspace: (context) => {
+        const { state, view } = this.editor;
+        const { selection, schema } = state;
+        const { $from } = selection;
+        // An empty first line of the body: Backspace removes it and returns
+        // to the summary.
+        if (
+          selection.empty &&
+          $from.depth >= 2 &&
+          $from.parentOffset === 0 &&
+          $from.parent.type.name === 'paragraph' &&
+          $from.parent.content.size === 0 &&
+          $from.node(-1).type === schema.nodes.detailsContent &&
+          $from.index(-1) === 0
+        ) {
+          const togglePos = $from.before($from.depth - 2);
+          const toggle = $from.node($from.depth - 2);
+          const tr = state.tr.delete($from.before(), $from.after());
+          tr.setSelection(TextSelection.create(tr.doc, togglePos + 2 + toggle.firstChild.content.size));
+          view.dispatch(tr);
+          return true;
+        }
+        return inherited.Backspace ? inherited.Backspace(context) : false;
       },
     };
   },
@@ -120,7 +141,31 @@ export const Toggle = Details.extend({
       }),
     ];
   },
+
+  addProseMirrorPlugins() {
+    const editor = this.editor;
+    return [
+      ...(this.parent?.() ?? []),
+      // Clicking the "Empty toggle" hint starts the first line inside it.
+      new Plugin({
+        key: new PluginKey('emptyToggle'),
+        props: {
+          handleClick(view, _pos, event) {
+            const body = event.target.closest?.('div[data-type="detailsContent"]');
+            if (!editor.isEditable || !body || body.childElementCount > 0) return false;
+            const at = view.posAtDOM(body, 0);
+            const tr = view.state.tr.insert(at, view.state.schema.nodes.paragraph.create());
+            tr.setSelection(TextSelection.create(tr.doc, at + 1));
+            view.dispatch(tr);
+            view.focus();
+            return true;
+          },
+        },
+      }),
+    ];
+  },
 }).configure({ persist: true });
 
 export const ToggleSummary = DetailsSummary.extend({ content: 'inline*' });
-export const ToggleContent = DetailsContent;
+// A toggle may be empty ("Empty toggle. Click or drop blocks inside.").
+export const ToggleContent = DetailsContent.extend({ content: 'block*' });

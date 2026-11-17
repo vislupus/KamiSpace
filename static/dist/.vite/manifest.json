@@ -1,13 +1,13 @@
 {
-  "_logo-CxtBiHjq.css": {
-    "file": "assets/logo-CxtBiHjq.css",
-    "src": "_logo-CxtBiHjq.css"
+  "_logo-0IoS2U7j.css": {
+    "file": "assets/logo-0IoS2U7j.css",
+    "src": "_logo-0IoS2U7j.css"
   },
-  "_logo-hcykU1Dy.js": {
-    "file": "assets/logo-hcykU1Dy.js",
+  "_logo-wht07tco.js": {
+    "file": "assets/logo-wht07tco.js",
     "name": "logo",
     "css": [
-      "assets/logo-CxtBiHjq.css"
+      "assets/logo-0IoS2U7j.css"
     ]
   },
   "node_modules/katex/dist/fonts/KaTeX_AMS-Regular.woff2": {
@@ -101,44 +101,44 @@
     "isDynamicEntry": true
   },
   "src/app/history.js": {
-    "file": "assets/history-BIIg7Koy.js",
+    "file": "assets/history-BhoOh5R-.js",
     "name": "history",
     "src": "src/app/history.js",
     "isDynamicEntry": true,
     "imports": [
-      "_logo-hcykU1Dy.js",
+      "_logo-wht07tco.js",
       "src/main.js"
     ]
   },
   "src/app/settings.js": {
-    "file": "assets/settings-BYkgFYWN.js",
+    "file": "assets/settings-CzZYuVnx.js",
     "name": "settings",
     "src": "src/app/settings.js",
     "isDynamicEntry": true,
     "imports": [
-      "_logo-hcykU1Dy.js",
+      "_logo-wht07tco.js",
       "src/main.js"
     ]
   },
   "src/auth.js": {
-    "file": "assets/auth-CNmqPEFV.js",
+    "file": "assets/auth-DDcESLN_.js",
     "name": "auth",
     "src": "src/auth.js",
     "isEntry": true,
     "imports": [
-      "_logo-hcykU1Dy.js"
+      "_logo-wht07tco.js"
     ],
     "css": [
       "assets/auth-3DZ6FeCv.css"
     ]
   },
   "src/editor/index.js": {
-    "file": "assets/editor-qNIeHS1C.js",
+    "file": "assets/editor-DsAcQnk2.js",
     "name": "editor",
     "src": "src/editor/index.js",
     "isDynamicEntry": true,
     "imports": [
-      "_logo-hcykU1Dy.js",
+      "_logo-wht07tco.js",
       "src/main.js"
     ],
     "dynamicImports": [
@@ -146,12 +146,12 @@
     ]
   },
   "src/main.js": {
-    "file": "assets/main-orekmWJH.js",
+    "file": "assets/main-DRsek-3I.js",
     "name": "main",
     "src": "src/main.js",
     "isEntry": true,
     "imports": [
-      "_logo-hcykU1Dy.js"
+      "_logo-wht07tco.js"
     ],
     "dynamicImports": [
       "src/editor/index.js",
@@ -159,7 +159,7 @@
       "src/app/settings.js"
     ],
     "css": [
-      "assets/main-DAMuw7Ug.css"
+      "assets/main-DdVNG99l.css"
     ]
   }
 }

@@ -30,6 +30,7 @@ _TASK_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _WEB_URL_RE = re.compile(r"^https?://[^\s<>\"']+$", re.IGNORECASE)
 
+IMAGE_ALIGNMENTS = {"left", "center", "right"}
 CALLOUT_VARIANTS = {"info", "success", "warning", "danger", "note"}
 # Named colours; the stylesheet maps them to values for each theme.
 COLORS = {"gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"}
@@ -175,10 +176,13 @@ def _clean_attrs(node_type: str, attrs: dict[str, Any]) -> dict[str, Any] | None
         if attachment_id is None:
             return None
         width = attrs.get("width")
+        align = attrs.get("align")
         return {
             "attachmentId": attachment_id,
             "alt": _text(attrs.get("alt"), 300) or None,
             "width": _int(width, 100, 10, 100) if width is not None else None,
+            "align": align if align in IMAGE_ALIGNMENTS else "center",
+            "caption": _text(attrs.get("caption"), 500) or None,
         }
     if node_type == "attachment":
         attachment_id = _attachment_id(attrs.get("attachmentId"))
@@ -357,7 +361,8 @@ def extract_text(doc: Any) -> str:
             parts.append("\n")
             return
         if node_type == "image":
-            parts.append((node.get("attrs") or {}).get("alt") or "")
+            image_attrs = node.get("attrs") or {}
+            parts.append(image_attrs.get("caption") or image_attrs.get("alt") or "")
             parts.append("\n")
             return
         if node_type in ("blockEquation", "inlineEquation"):

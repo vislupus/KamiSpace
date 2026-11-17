@@ -94,6 +94,7 @@ function openShortcuts() {
     ['Move block up / down', 'Alt+Shift+↑ / ↓'],
     ['Duplicate block', 'Mod+D'],
     ['Indent / outdent list item', 'Tab / Shift+Tab'],
+    ['Move a block into / out of the toggle above', 'Tab / Shift+Tab'],
     ['Undo · Redo', 'Mod+Z · Mod+Shift+Z'],
   ];
   openModal({
