@@ -20,6 +20,14 @@ const EMPTY = {
   listUsers: () => [],
   /** (id) => string | null */
   userName: () => null,
+  /** ({ container, databaseId, inline }) => { destroy() } — draw a database */
+  mountDatabase: null,
+  /** (view: 'table' | 'board') => Promise<{ id } | null> — new database in this page */
+  createDatabase: async () => null,
+  /** id of the signed-in user */
+  currentUserId: null,
+  /** (taskKey, checked) => Promise — tick a task assigned to the current user */
+  toggleTask: async () => {},
   /** whether the server may fetch web addresses (bookmark previews, images) */
   remoteFetch: false,
   /** (url) => Promise<{ url, title, description }> */

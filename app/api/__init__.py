@@ -4,6 +4,7 @@ from app.api import (
     account,
     admin,
     auth,
+    databases,
     files,
     pages,
     remote,
@@ -27,6 +28,7 @@ for module in (
     files,
     remote,
     tasks,
+    databases,
     workspaces,
     admin,
 ):

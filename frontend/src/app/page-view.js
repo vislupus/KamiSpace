@@ -4,6 +4,7 @@ import { copyText } from '../lib/clipboard.js';
 import { h, kbd, replace } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { openMenu } from '../lib/menu.js';
+import { openPopover } from '../lib/popover.js';
 import { promptDialog } from '../lib/modal.js';
 import { toast, toastError } from '../lib/toast.js';
 import { clamp, debounce, timeAgo } from '../lib/util.js';
@@ -16,11 +17,23 @@ import {
   toggleFavorite,
   trashPage,
 } from './actions.js';
+import { mountDatabase } from './database/index.js';
+import { TYPES, editValue, renderValue } from './database/values.js';
 import { openEmojiPicker } from './emoji.js';
 import { downloadText, importMarkdown } from './import.js';
 import { navigate, pagePath } from './router.js';
 import { DocSaver } from './saver.js';
-import { emit, getPage, isFavorite, on, patchPage, store, userName } from './store.js';
+import {
+  emit,
+  getPage,
+  isFavorite,
+  on,
+  patchPage,
+  refreshTree,
+  setOpenTasks,
+  store,
+  userName,
+} from './store.js';
 
 const SAVE_LABELS = {
   saved: 'Saved',
@@ -228,9 +241,9 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
                 })),
                 { separator: true },
                 {
-                  label: 'Small text',
-                  checked: page.small_text,
-                  onSelect: () => setMeta({ small_text: !page.small_text }),
+                  label: 'Text size…',
+                  hint: `${page.text_size} px`,
+                  onSelect: openTextSize,
                 },
                 {
                   label: 'Full width',
@@ -355,7 +368,66 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
   const banners = h('div');
   const editorMount = h('div', { class: 'editor' });
   const head = h('div', { class: 'page-head' }, iconSlot, headActions, title);
-  const article = h('article', { class: 'page' }, head, banners, editorMount);
+  const rowProps = h('div', { class: 'row-props', hidden: true });
+  const article = h('article', { class: 'page' }, head, rowProps, banners, editorMount);
+  const isDatabase = page.kind === 'database';
+  let databaseView = null;
+
+  // New options are saved before the value that uses them.
+  let rowSchemaSave = Promise.resolve();
+
+  /** A row of a database shows its properties under the title. */
+  function renderRowProps() {
+    const row = page.row;
+    const properties = (row?.properties ?? []).filter((prop) => prop.type !== 'title');
+    rowProps.hidden = !properties.length;
+    if (!properties.length) return;
+    const rowUrl = `/api/databases/${row.database_id}`;
+    replace(
+      rowProps,
+      properties.map((prop) => {
+        const value = row.props[prop.id] ?? null;
+        const shown = renderValue(prop, value);
+        const cell = h(
+          'div',
+          { class: `row-prop-value${editable ? ' is-editable' : ''}`, dataset: { prop: prop.id }, role: editable ? 'button' : null },
+          shown ?? h('span', { class: 'row-prop-empty' }, 'Empty'),
+        );
+        if (editable) {
+          cell.addEventListener('click', () =>
+            editValue(prop, value, cell, {
+              onChange: async (next) => {
+                if (next === null) delete row.props[prop.id];
+                else row.props[prop.id] = next;
+                renderRowProps();
+                try {
+                  await rowSchemaSave;
+                  const saved = await api.patch(`${rowUrl}/rows/${page.id}`, { props: { [prop.id]: next } });
+                  row.props = saved.props;
+                } catch (error) {
+                  toastError(error, 'Could not save the change');
+                }
+              },
+              onProperty: async (changed) => {
+                row.properties = row.properties.map((item) => (item.id === changed.id ? changed : item));
+                renderRowProps();
+                rowSchemaSave = api
+                  .patch(rowUrl, { properties: row.properties })
+                  .catch((error) => toastError(error, 'Could not save the options'));
+                await rowSchemaSave;
+              },
+            }),
+          );
+        }
+        return h(
+          'div',
+          { class: 'row-prop' },
+          h('div', { class: 'row-prop-name', title: prop.name }, icon(TYPES[prop.type].icon, 15), h('span', null, prop.name)),
+          cell,
+        );
+      }),
+    );
+  }
 
   async function saveMeta(fields) {
     try {
@@ -366,7 +438,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
         'cover_attachment_id',
         'cover_position',
         'font',
-        'small_text',
+        'text_size',
         'full_width',
         'locked',
       ]) {
@@ -383,8 +455,81 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
   function applyAppearance() {
     article.classList.toggle('font-serif', page.font === 'serif');
     article.classList.toggle('font-mono', page.font === 'mono');
-    article.classList.toggle('is-small', Boolean(page.small_text));
+    applyTextSize(page.text_size);
     article.classList.toggle('is-wide', Boolean(page.full_width));
+  }
+
+  function applyTextSize(size) {
+    const value = clamp(Number(size) || 16, 12, 32);
+    article.style.setProperty('--doc-size', `${value}px`);
+    article.style.setProperty('--doc-scale', String(value / 16));
+    resizeTitle();
+  }
+
+  /** How big ordinary text is on this page; headings and the title follow. */
+  function openTextSize() {
+    const original = page.text_size;
+    let chosen = original;
+    const slider = h('input', {
+      type: 'range',
+      min: 12,
+      max: 32,
+      step: 1,
+      value: original,
+      class: 'text-size-slider',
+      'aria-label': 'Text size',
+    });
+    const label = h('span', { class: 'text-size-value' }, `${original} px`);
+    const preview = (size) => {
+      chosen = size;
+      slider.value = size;
+      label.textContent = `${size} px`;
+      applyTextSize(size);
+      for (const button of presets.children) {
+        button.classList.toggle('is-on', Number(button.dataset.size) === size);
+      }
+    };
+    const presets = h(
+      'div',
+      { class: 'text-size-presets' },
+      [
+        ['Small', 14],
+        ['Default', 16],
+        ['Large', 18],
+        ['Larger', 20],
+        ['Huge', 24],
+      ].map(([name, size]) =>
+        h(
+          'button',
+          {
+            class: `button button-small${size === original ? ' is-on' : ''}`,
+            type: 'button',
+            dataset: { size },
+            onclick: () => preview(size),
+          },
+          name,
+        ),
+      ),
+    );
+    slider.addEventListener('input', () => preview(Number(slider.value)));
+    openPopover({
+      anchor: moreButton,
+      placement: 'bottom-end',
+      className: 'text-size-popover',
+      content: h(
+        'div',
+        { class: 'text-size' },
+        h('div', { class: 'text-size-head' }, h('span', null, 'Text size'), label),
+        slider,
+        presets,
+        h('div', { class: 'field-hint' }, 'Applies to this page, for everyone who opens it.'),
+      ),
+      onClose: async () => {
+        if (chosen === original || destroyed) return;
+        if (!(await saveMeta({ text_size: chosen }))) applyTextSize(page.text_size);
+      },
+    });
+    slider.focus();
   }
 
   /** Drag the cover up or down to choose which part of the picture shows. */
@@ -683,12 +828,37 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
     subscribe: (listener) => on('tree', listener),
     listUsers: () => [...store.users].map(([id, username]) => ({ id, username })),
     userName,
+    mountDatabase,
+    createDatabase: async (view) => {
+      try {
+        const created = await api.post('/api/databases', { parent_id: page.id, view });
+        await refreshTree();
+        return created;
+      } catch (error) {
+        toastError(error, 'Could not create the database');
+        return null;
+      }
+    },
+    currentUserId: store.user?.id ?? null,
+    // The person a task is assigned to may tick it, also on a read-only page.
+    toggleTask: async (taskKey, checked) => {
+      const result = await api.put(`/api/pages/${page.id}/tasks/${taskKey}`, { checked });
+      setOpenTasks(result.open_tasks);
+      if (saver) saver.reset(result.revision);
+      page.revision = result.revision;
+    },
     remoteFetch: Boolean(store.limits.remote_fetch),
     fetchBookmark: (url) => api.post('/api/bookmarks', { url }),
     importImage: (url) => api.post(`/api/pages/${page.id}/files/remote`, { url }),
   };
+  if (isDatabase) {
+    // A database opened by itself fills the page; it has no text of its own.
+    article.classList.add('is-database');
+    databaseView = mountDatabase({ container: editorMount, databaseId: page.id });
+  }
+  renderRowProps();
   editor = editorModule.createEditor({
-    element: editorMount,
+    element: isDatabase ? document.createElement('div') : editorMount,
     content: page.content,
     editable,
     context,
@@ -828,6 +998,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
       for (const unsubscribe of subscriptions) unsubscribe();
       saveTitle.cancel();
       saver?.destroy();
+      databaseView?.destroy();
       editor?.destroy();
       editor = null;
     },

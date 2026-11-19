@@ -47,9 +47,38 @@ class PageMetaIn(Body):
     cover_attachment_id: str | None = Field(default=None, max_length=32)
     cover_position: int | None = Field(default=None, ge=0, le=100)
     font: Literal["default", "serif", "mono"] | None = None
-    small_text: bool | None = None
+    text_size: int | None = Field(default=None, ge=12, le=32)
     full_width: bool | None = None
     locked: bool | None = None
+
+
+class DatabaseCreateIn(Body):
+    workspace_id: int | None = None
+    parent_id: int | None = None
+    title: str = Field(default="", max_length=1000)
+    # Which view comes first.
+    view: Literal["table", "board"] = "table"
+
+
+class DatabaseUpdateIn(Body):
+    properties: list[dict[str, Any]] | None = Field(default=None, max_length=60)
+    views: list[dict[str, Any]] | None = Field(default=None, max_length=30)
+
+
+class RowCreateIn(Body):
+    title: str = Field(default="", max_length=1000)
+    props: dict[str, Any] | None = None
+    before_id: int | None = None
+    after_id: int | None = None
+
+
+class RowUpdateIn(Body):
+    title: str | None = Field(default=None, max_length=1000)
+    icon: str | None = Field(default=None, max_length=32)
+    # Only the listed properties change; null clears a value.
+    props: dict[str, Any] | None = None
+    before_id: int | None = None
+    after_id: int | None = None
 
 
 class ContentSaveIn(Body):

@@ -38,6 +38,25 @@ What KamiSpace does to protect your notes, and what remains your job.
   page content they were not given. Adding themselves to a team workspace is
   possible and audited; personal workspaces cannot be shared at all.
 
+### Tasks given to someone
+
+Assigning a to-do item is a deliberate act by somebody who can edit the page,
+and it shares exactly that item: the assignee sees its text in "My tasks" and
+may tick it, even when the page is not shared with them. They do not get the
+page's title, its content or the other tasks, and opening the page still
+answers "not found". Ticking is the only change they can make; it is checked
+against the task's assignee on the server.
+
+### Databases
+
+A database and its rows are pages, so every rule above applies unchanged: a
+viewer cannot add rows or change values, a row can be shared on its own, and
+somebody without access gets "not found" for the database and for each row.
+The schema, the view settings and all property values go through an
+allow-list on the server (`app/services/databases.py`); people in a *Person*
+property must be existing accounts, links in a *URL* property must be safe
+addresses.
+
 ## Stored content (XSS)
 
 - Documents are ProseMirror JSON, never HTML. On every save the server rebuilds

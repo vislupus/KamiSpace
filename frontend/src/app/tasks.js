@@ -59,7 +59,7 @@ export function mountTasks({ container, topbar }) {
           type: 'checkbox',
           checked: task.checked,
           disabled: !task.can_toggle,
-          title: task.can_toggle ? '' : 'You can view this page but not edit it',
+          title: task.can_toggle ? '' : 'The page is locked',
           'aria-label': task.text || 'Task',
         });
         box.addEventListener('change', async () => {
@@ -86,12 +86,18 @@ export function mountTasks({ container, topbar }) {
             'div',
             { class: 'list-main' },
             h('div', { class: 'list-title' }, task.text || 'Untitled task'),
-            h(
-              'a',
-              { class: 'list-sub task-page', href: pagePath(task.page_id), dataset: { link: '' } },
-              task.page_icon ? `${task.page_icon} ` : '',
-              task.page_title || 'Untitled',
-            ),
+            task.can_open
+              ? h(
+                  'a',
+                  { class: 'list-sub task-page', href: pagePath(task.page_id), dataset: { link: '' } },
+                  task.page_icon ? `${task.page_icon} ` : '',
+                  task.page_title || 'Untitled',
+                )
+              : h(
+                  'span',
+                  { class: 'list-sub task-page', title: 'Ask for the page to be shared with you to read more' },
+                  'On a page that is not shared with you',
+                ),
           ),
           task.due
             ? h(
@@ -133,7 +139,9 @@ export function mountTasks({ container, topbar }) {
           h('span', { class: 'kbd' }, '[]'),
           ' or ',
           h('span', { class: 'kbd' }, '/todo'),
-          '), then use the person button on the right of the item to assign it, and the calendar button for a due date. The page must be shared with that person.',
+          ') and type ',
+          h('span', { class: 'kbd' }, '@name'),
+          ' in it, or use the person button on its right. The next items you add with Enter go to the same person; select several items to assign them together, or pick “Assign all in this list”. The person sees the task here and can tick it off, even if the page itself is not shared with them.',
         ),
       ),
       list,

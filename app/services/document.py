@@ -67,6 +67,7 @@ BLOCK_NODES = {
     "video",
     "audio",
     "pageLink",
+    "database",
 }
 INLINE_ATOMS = {"hardBreak", "inlineEquation", "pageMention"}
 INLINE_NODES = {"text"} | INLINE_ATOMS
@@ -80,6 +81,7 @@ LEAF_NODES = {
     "video",
     "audio",
     "pageLink",
+    "database",
 }
 ATTACHMENT_NODES = {"image", "attachment", "video", "audio"}
 
@@ -156,7 +158,7 @@ def _clean_attrs(node_type: str, attrs: dict[str, Any]) -> dict[str, Any] | None
         if attachment_id is None:
             return None
         return {"attachmentId": attachment_id, "name": _text(attrs.get("name"), 255) or None}
-    if node_type in ("pageLink", "pageMention"):
+    if node_type in ("pageLink", "pageMention", "database"):
         page_id = attrs.get("pageId")
         if not isinstance(page_id, int) or isinstance(page_id, bool) or page_id <= 0:
             return None
@@ -460,7 +462,7 @@ def remap_page_links(doc: dict[str, Any], id_map: dict[int, int]) -> dict[str, A
     """Copy of a document whose page links follow ``id_map`` (old id → new id)."""
     result = copy.deepcopy(doc)
     for node in iter_nodes(result):
-        if node.get("type") in ("pageLink", "pageMention"):
+        if node.get("type") in ("pageLink", "pageMention", "database"):
             attrs = node.get("attrs") or {}
             if attrs.get("pageId") in id_map:
                 attrs["pageId"] = id_map[attrs["pageId"]]

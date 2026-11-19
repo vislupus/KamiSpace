@@ -1,6 +1,7 @@
 // The block catalogue. Slash commands, the "+" button and the "Turn into"
 // menu are all generated from this list — adding a block type means adding an
 // entry here (plus its Tiptap extension and the server's allow-list).
+import { insertDatabase } from './extensions/database.js';
 import { blockKind, convertBlock, currentBlockPos, sameKind } from './block-ops.js';
 import { promptForBookmark } from './extensions/bookmark.js';
 import { promptForEmbed } from './extensions/embed.js';
@@ -154,6 +155,24 @@ export const BLOCKS = [
     keywords: ['columns', 'column', 'layout', 'side', `${count}columns`, 'col'],
     apply: (chain) => chain.insertColumns(count),
   })),
+  {
+    id: 'database',
+    group: 'Database',
+    title: 'Database – table',
+    description: 'Rows with properties: status, person, date…',
+    icon: 'database',
+    keywords: ['database', 'db', 'table view', 'spreadsheet', 'rows', 'properties', 'tracker'],
+    action: (editor) => insertDatabase(editor, 'table'),
+  },
+  {
+    id: 'board',
+    group: 'Database',
+    title: 'Board – Kanban',
+    description: 'Cards in columns, moved by dragging',
+    icon: 'kanban',
+    keywords: ['kanban', 'board', 'database', 'cards', 'tasks', 'status', 'trello'],
+    action: (editor) => insertDatabase(editor, 'board'),
+  },
   {
     id: 'page',
     group: 'Pages',

@@ -7,6 +7,7 @@ import { h } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 import { openMenu } from '../../lib/menu.js';
 import { openPopover } from '../../lib/popover.js';
+import { toast } from '../../lib/toast.js';
 import { appContext } from './app-context.js';
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -34,11 +35,11 @@ export function formatDue(due) {
   });
 }
 
-function plainAttribute(name, dataName, parse = (value) => value) {
+function plainAttribute(name, dataName, { parse = (value) => value, keepOnSplit = false } = {}) {
   return {
     [name]: {
       default: null,
-      keepOnSplit: false, // a new item starts unassigned, with its own id
+      keepOnSplit,
       parseHTML: (element) => {
         const value = element.getAttribute(dataName);
         return value ? parse(value) : null;
@@ -52,14 +53,24 @@ export const AssignableTaskItem = TaskItem.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      // Every item has its own id. Pressing Enter carries the person and the
+      // due date over to the next item, so a run of tasks for one person is
+      // assigned once.
       ...plainAttribute('taskId', 'data-task-id'),
-      ...plainAttribute('assignee', 'data-assignee', Number),
-      ...plainAttribute('due', 'data-due'),
+      ...plainAttribute('assignee', 'data-assignee', { parse: Number, keepOnSplit: true }),
+      ...plainAttribute('due', 'data-due', { keepOnSplit: true }),
     };
   },
 
   addNodeView() {
     const createView = this.parent?.();
+    const type = this.type;
+    // On a page that cannot be edited, a person may still tick the tasks
+    // that are assigned to them (see the node view below).
+    this.options.onReadOnlyChecked = (node) => {
+      const me = appContext(this.editor).currentUserId;
+      return Boolean(me && node.attrs.taskId && node.attrs.assignee === me);
+    };
     return (props) => {
       const { editor, getPos } = props;
       const context = appContext(editor);
@@ -68,31 +79,95 @@ export const AssignableTaskItem = TaskItem.extend({
       const meta = h('span', { class: 'task-meta', contentEditable: 'false' });
       view.dom.append(meta);
 
-      const setAttributes = (changes) => {
-        if (!editor.isEditable || typeof getPos !== 'function') return;
-        const pos = getPos();
-        const node = editor.state.doc.nodeAt(pos);
-        if (!node) return;
-        editor.view.dispatch(
-          editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...changes }),
+      if (!editor.isEditable) {
+        const box = view.dom.querySelector('input[type="checkbox"]');
+        const mine = Boolean(
+          context.currentUserId &&
+            current.attrs.taskId &&
+            current.attrs.assignee === context.currentUserId,
         );
+        if (box && !mine) box.disabled = true;
+        if (box && mine) {
+          box.title = 'Assigned to you';
+          box.addEventListener('change', async () => {
+            const checked = box.checked;
+            view.dom.dataset.checked = String(checked);
+            try {
+              await context.toggleTask(current.attrs.taskId, checked);
+            } catch (error) {
+              box.checked = !checked;
+              view.dom.dataset.checked = String(!checked);
+              toast(error?.message || 'Could not update the task', { type: 'error' });
+            }
+          });
+        }
+      }
+
+      /** Positions of the to-do items a change applies to. */
+      const targets = (scope) => {
+        const { state } = editor;
+        const pos = getPos();
+        if (scope === 'list') {
+          const $pos = state.doc.resolve(pos);
+          const list = $pos.parent;
+          const positions = [];
+          let offset = $pos.start();
+          list.forEach((child) => {
+            if (child.type === type) positions.push(offset);
+            offset += child.nodeSize;
+          });
+          return positions;
+        }
+        // Several items selected: the change goes to all of them.
+        const { from, to, empty } = state.selection;
+        const selected = [];
+        if (!empty) {
+          state.doc.nodesBetween(from, to, (node, nodePos) => {
+            if (node.type === type) selected.push(nodePos);
+            return true;
+          });
+        }
+        return selected.length > 1 && selected.includes(pos) ? selected : [pos];
+      };
+
+      const setAttributes = (changes, scope = 'selection') => {
+        if (!editor.isEditable || typeof getPos !== 'function') return;
+        const tr = editor.state.tr;
+        for (const pos of targets(scope)) {
+          const node = tr.doc.nodeAt(pos);
+          if (node?.type === type) tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...changes });
+        }
+        if (tr.docChanged) editor.view.dispatch(tr);
       };
 
       const pickAssignee = (anchor) => {
         const users = context.listUsers();
+        const selected = targets('selection').length;
+        const inList = targets('list').length;
         openMenu({
           anchor,
           placement: 'bottom-end',
           items: [
-            { heading: 'Assign to' },
+            { heading: selected > 1 ? `Assign ${selected} selected tasks to` : 'Assign to' },
             ...users.map((user) => ({
               label: user.username,
               icon: 'user',
-              checked: user.id === current.attrs.assignee,
+              checked: selected === 1 && user.id === current.attrs.assignee,
               onSelect: () => setAttributes({ assignee: user.id }),
             })),
-            current.attrs.assignee ? { separator: true } : null,
-            current.attrs.assignee
+            { separator: true },
+            inList > 1 && selected === 1
+              ? {
+                  label: `Assign all ${inList} in this list`,
+                  icon: 'list-todo',
+                  submenu: users.map((user) => ({
+                    label: user.username,
+                    icon: 'user',
+                    onSelect: () => setAttributes({ assignee: user.id }, 'list'),
+                  })),
+                }
+              : null,
+            current.attrs.assignee || selected > 1
               ? { label: 'Unassign', icon: 'x', onSelect: () => setAttributes({ assignee: null }) }
               : null,
           ],

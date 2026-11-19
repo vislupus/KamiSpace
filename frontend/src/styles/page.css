@@ -83,7 +83,8 @@ button.page-icon:hover {
   background: transparent;
   color: var(--text);
   font-family: inherit;
-  font-size: clamp(1.9rem, 1.3rem + 1.4vw, 2.5rem);
+  /* The title grows and shrinks with the page's text size. */
+  font-size: calc(clamp(1.9rem, 1.3rem + 1.4vw, 2.5rem) * var(--doc-scale, 1));
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.015em;

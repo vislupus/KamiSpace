@@ -83,7 +83,11 @@ export function mountLibrary({ container, topbar }) {
 
   function render() {
     renderFilters();
-    const pages = [...store.pages.values()].filter(matches).sort(SORTS[sort].compare);
+    // Rows of databases are listed inside their database, not here.
+    const pages = [...store.pages.values()]
+      .filter((page) => !page.is_row)
+      .filter(matches)
+      .sort(SORTS[sort].compare);
     count.textContent = `${pages.length} page${pages.length === 1 ? '' : 's'}`;
     if (!pages.length) {
       replace(

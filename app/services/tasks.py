@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import utcnow
 from app.errors import Locked, NotFound
-from app.models import ROLE_EDITOR, Page, Task, User
+from app.models import Page, Task, User
 from app.services import search, versions
 from app.services.document import extract_tasks, set_task_checked
 from app.services.permissions import Access
@@ -49,8 +49,10 @@ def _visible(db: Session, access: Access, *, include_done: bool) -> list[tuple[T
     )
     if not include_done:
         query = query.where(Task.checked.is_(False))
+    # Being given a task shows that task (not the page) to the assignee, also
+    # when the page itself is not shared with them.
     rows = db.execute(query.order_by(Task.checked, Task.due.is_(None), Task.due, Task.id)).all()
-    return [(task, page) for task, page in rows if access.can_view(page.id)]
+    return [(task, page) for task, page in rows]
 
 
 def count_open(db: Session, access: Access) -> int:
@@ -64,9 +66,7 @@ def count_open(db: Session, access: Access) -> int:
             Page.deleted_at.is_(None),
         )
     ).scalar_one()
-    if not assigned:
-        return 0
-    return len(_visible(db, access, include_done=False))
+    return int(assigned)
 
 
 def list_assigned(db: Session, access: Access, *, include_done: bool) -> list[dict[str, Any]]:
@@ -74,20 +74,37 @@ def list_assigned(db: Session, access: Access, *, include_done: bool) -> list[di
         {
             "task_key": task.task_key,
             "page_id": page.id,
-            "page_title": page.title,
-            "page_icon": page.icon,
+            # Only the task itself is shown to someone who cannot open the page.
+            "page_title": page.title if access.can_view(page.id) else None,
+            "page_icon": page.icon if access.can_view(page.id) else None,
             "text": task.text,
             "checked": task.checked,
             "due": task.due,
-            "can_toggle": access.can_edit(page.id) and not page.locked,
+            # Whoever a task is assigned to may tick it off.
+            "can_toggle": not page.locked,
+            "can_open": access.can_view(page.id),
         }
         for task, page in _visible(db, access, include_done=include_done)
     ]
 
 
 def set_checked(db: Session, access: Access, page_id: int, task_key: str, checked: bool) -> Page:
-    """Tick a to-do item from outside the editor (the "My tasks" list)."""
-    page = access.require_page(page_id, ROLE_EDITOR)
+    """Tick a to-do item from outside the editor (the "My tasks" list).
+
+    Allowed for people who can edit the page and for the person the task is
+    assigned to — the latter also when they can only read the page, or cannot
+    open it at all.
+    """
+    page = db.get(Page, page_id)
+    if page is None or page.deleted_at is not None:
+        raise NotFound()
+    if not access.can_edit(page.id):
+        task = db.execute(
+            select(Task).where(Task.page_id == page.id, Task.task_key == task_key)
+        ).scalar_one_or_none()
+        if task is None or task.assignee_id != access.user.id:
+            # Same answer as for a page that does not exist.
+            raise NotFound()
     if page.locked:
         raise Locked()
     content = copy.deepcopy(page.content)

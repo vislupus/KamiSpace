@@ -5,6 +5,7 @@ import './styles/components.css';
 import './styles/shell.css';
 import './styles/page.css';
 import './styles/editor.css';
+import './styles/database.css';
 import { createPage, setBeforeCreate } from './app/actions.js';
 import { mountHome } from './app/home.js';
 import { mountLibrary } from './app/library.js';

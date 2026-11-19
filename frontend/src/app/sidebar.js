@@ -283,7 +283,7 @@ export function createSidebar({
         'aria-expanded': expandable ? String(open) : null,
       },
       flat ? null : toggle,
-      h('span', { class: 'tree-icon' }, page.icon || icon('file-text', 15)),
+      h('span', { class: 'tree-icon' }, page.icon || icon(page.kind === 'database' ? 'database' : 'file-text', 15)),
       renaming === page.id
         ? renameInput(page)
         : h(
