@@ -108,4 +108,5 @@ def health() -> dict[str, str]:
         "status": "ok" if state.status == "ok" else "error",
         "version": __version__,
         "schema": state.status,
+        "revision": state.current or "",
     }

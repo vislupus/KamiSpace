@@ -194,7 +194,7 @@ virtual environment in `.venv/`, both inside the project as well.
 
 ```
 uv run python -m app run [--host H] [--port P] [--reload]   start the server
-uv run python -m app migrate                                apply migrations
+uv run python -m app migrate [--assume REVISION]            apply migrations (and check the result)
 uv run python -m app status                                 which code and data are in use, and do they fit
 uv run python -m app create-admin [--username U]            create an administrator
 uv run python -m app reset-password <username>              set a new password

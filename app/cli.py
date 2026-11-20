@@ -10,7 +10,13 @@ from pathlib import Path
 from app.config import BASE_DIR, get_settings
 from app.db import reset_engine, session_scope
 from app.errors import AppError
-from app.schema import run_migrations, schema_state
+from app.schema import (
+    MIGRATIONS_DIR,
+    _revisions,
+    explain,
+    run_migrations,
+    schema_state,
+)
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -31,23 +37,31 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_migrate(_args: argparse.Namespace) -> int:
+def cmd_migrate(args: argparse.Namespace) -> int:
     settings = get_settings()
     before = schema_state(settings)
-    print(f"Database: {settings.database_path}")
-    if before.status == "ahead":
-        print(
-            f"It is at schema revision {before.current}, which this copy of the code does not "
-            f"know (it expects {before.head}). Update the code here first.",
-            file=sys.stderr,
-        )
+    print(f"Database:   {settings.database_path}")
+    print(f"Migrations: {MIGRATIONS_DIR / 'versions'} (newest: {before.head or 'none'})")
+    if before.status in ("incomplete", "ahead"):
+        print(f"\n{explain(before, settings)}", file=sys.stderr)
         return 1
-    run_migrations()
+    if args.assume is not None:
+        _head, known = _revisions()
+        if args.assume not in known:
+            print(f"Unknown revision {args.assume!r}. Known: {', '.join(known)}", file=sys.stderr)
+            return 1
+        print(f"Treating the database as schema revision {args.assume}.")
+    run_migrations(assume=args.assume)
     after = schema_state(settings)
-    if before.current == after.current:
-        print(f"Already up to date (schema revision {after.current}).")
+    if after.status != "ok":
+        # Never report success on the revision number alone.
+        print(f"\n{explain(after, settings)}", file=sys.stderr)
+        return 1
+    if before.current == after.current and args.assume is None:
+        print(f"Already up to date: schema revision {after.current}, all tables checked.")
     else:
-        print(f"Upgraded from schema revision {before.current or 'none'} to {after.current}.")
+        start = args.assume or before.current or "none"
+        print(f"Upgraded from schema revision {start} to {after.current}.")
     return 0
 
 
@@ -59,30 +73,29 @@ def cmd_status(_args: argparse.Namespace) -> int:
 
     settings = get_settings()
     state = schema_state(settings)
-    print(f"KamiSpace {__version__}")
-    print(f"Code:      {BASE_DIR}")
-    print(f"Data:      {settings.data_dir}")
-    print(f"Database:  {settings.database_path}")
+    print(f"KamiSpace {__version__} (needs schema revision {state.required})")
+    print(f"Code:       {BASE_DIR}")
+    print(f"Migrations: {MIGRATIONS_DIR / 'versions'} (newest: {state.head or 'none'})")
+    print(f"Data:       {settings.data_dir}")
+    print(f"Database:   {settings.database_path}")
+    print(f"Log:        {settings.logs_dir / 'kamispace.log'}")
     if not settings.database_path.is_file():
-        print("           (does not exist yet; it is created on the first start)")
-        return 0
-    notes = {
-        "ok": "matches this code",
-        "behind": f"behind: this code needs {state.head}; run `python -m app migrate`",
-        "ahead": f"newer than this code (which expects {state.head}); update the code here",
-    }
-    print(f"Schema:    {state.current or 'none'} — {notes[state.status]}")
+        print("            (the database does not exist yet; it is created on the first start)")
+        return 0 if state.status != "incomplete" else 1
     connection = sqlite3.connect(settings.database_path, timeout=5)
     try:
         users = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         pages = connection.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
-        print(f"Contents:  {users} user(s), {pages} page(s)")
+        print(f"Contents:   {users} user(s), {pages} page(s)")
     except sqlite3.OperationalError as error:
-        print(f"Contents:  could not be read ({error})")
+        print(f"Contents:   could not be read ({error})")
     finally:
         connection.close()
-    print(f"Log:       {settings.logs_dir / 'kamispace.log'}")
-    return 0 if state.status == "ok" else 1
+    print(f"Schema:     revision {state.current or 'none'} — {state.status}")
+    if state.status != "ok":
+        print(f"\n{explain(state, settings)}")
+        return 1
+    return 0
 
 
 def _read_password(args: argparse.Namespace) -> str:
@@ -176,6 +189,12 @@ def build_parser() -> argparse.ArgumentParser:
     status.set_defaults(func=cmd_status)
 
     migrate = commands.add_parser("migrate", help="Apply database migrations")
+    migrate.add_argument(
+        "--assume",
+        metavar="REVISION",
+        help="repair: first mark the database as being at this schema revision "
+        "(when the mark does not say what the database really contains)",
+    )
     migrate.set_defaults(func=cmd_migrate)
 
     admin = commands.add_parser("create-admin", help="Create an administrator account")

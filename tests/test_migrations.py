@@ -216,6 +216,28 @@ def _set_revision(revision: str) -> None:
     connection.close()
 
 
+def _page_columns() -> set[str]:
+    connection = sqlite3.connect(get_settings().database_path)
+    try:
+        return {row[1] for row in connection.execute("PRAGMA table_info(pages)")}
+    finally:
+        connection.close()
+
+
+def _done() -> None:
+    reset_engine()
+    get_settings.cache_clear()
+
+
+def test_the_code_names_the_newest_migration_it_needs():
+    """Forgetting to raise REQUIRED_REVISION with a new migration fails here."""
+    from app.schema import REQUIRED_REVISION, _revisions
+
+    head, revisions = _revisions()
+    assert head == REQUIRED_REVISION
+    assert revisions[-1] == head and revisions[0] == "0001"
+
+
 def test_starting_the_app_upgrades_a_database_that_is_behind(tmp_path, monkeypatch):
     """Whatever starts the app (not only `python -m app run`), the schema is brought up."""
     from app.main import create_app
@@ -228,16 +250,16 @@ def test_starting_the_app_upgrades_a_database_that_is_behind(tmp_path, monkeypat
 
     client = TestClient(create_app())
     state = schema_state()
-    assert (state.status, state.current) == ("ok", state.head)
-    columns = {
-        row[1]
-        for row in sqlite3.connect(get_settings().database_path).execute("PRAGMA table_info(pages)")
-    }
-    assert {"kind", "text_size"} <= columns
+    assert (state.status, state.current, state.missing) == ("ok", state.head, ())
+    assert {"kind", "text_size"} <= _page_columns()
     health = client.get("/healthz").json()
-    assert health["status"] == "ok" and health["schema"] == "ok" and health["version"]
-    reset_engine()
-    get_settings.cache_clear()
+    assert health == {
+        "status": "ok",
+        "version": health["version"],
+        "schema": "ok",
+        "revision": state.head,
+    }
+    _done()
 
 
 def test_a_database_that_is_behind_stops_the_start_when_auto_migrate_is_off(tmp_path, monkeypatch):
@@ -251,8 +273,7 @@ def test_a_database_that_is_behind_stops_the_start_when_auto_migrate_is_off(tmp_
     command.upgrade(alembic_config(), "0002")
     with pytest.raises(SchemaError, match="python -m app migrate"):
         create_app()
-    reset_engine()
-    get_settings.cache_clear()
+    _done()
 
 
 def test_older_code_refuses_a_database_from_a_newer_version(tmp_path, monkeypatch, capsys):
@@ -272,16 +293,74 @@ def test_older_code_refuses_a_database_from_a_newer_version(tmp_path, monkeypatc
     assert "does not know" in capsys.readouterr().err
     assert cli_main(["status"]) == 1
     output = capsys.readouterr().out
-    assert str(get_settings().database_path) in output and "newer than this code" in output
-    reset_engine()
-    get_settings.cache_clear()
+    assert str(get_settings().database_path) in output and "ahead" in output
+    _done()
 
 
-def test_status_command_reports_code_data_and_schema(data_dir, capsys):
+def test_a_revision_mark_that_does_not_match_the_tables_is_found_and_repaired(
+    tmp_path, monkeypatch, capsys
+):
+    """The mark says "newest", the tables are older: `migrate` must not say "up to date"."""
+    from app.cli import main as cli_main
+    from app.main import create_app
+    from app.schema import SchemaError, schema_state
+
+    use_empty_database(tmp_path, monkeypatch)
+    get_settings().ensure_directories()
+    command.upgrade(alembic_config(), "0002")
+    _set_revision("0003")
+
+    state = schema_state()
+    assert state.status == "damaged"
+    assert {"pages.kind", "pages.text_size", "pages.db_schema", "pages.props"} <= set(state.missing)
+    with pytest.raises(SchemaError, match=r"pages\.text_size"):
+        create_app()
+    # A plain migrate finds nothing to do — and says what is wrong instead.
+    assert cli_main(["migrate"]) == 1
+    captured = capsys.readouterr()
+    assert "up to date" not in captured.out
+    assert "migrate --assume 0002" in captured.err
+    assert cli_main(["status"]) == 1
+    assert "damaged" in capsys.readouterr().out
+
+    assert cli_main(["migrate", "--assume", "nonsense"]) == 1
+    assert "Unknown revision" in capsys.readouterr().err
+    assert cli_main(["migrate", "--assume", "0002"]) == 0
+    assert "Upgraded from schema revision 0002 to 0003" in capsys.readouterr().out
+    assert schema_state().status == "ok"
+    assert {"kind", "text_size"} <= _page_columns() and "small_text" not in _page_columns()
+    client = TestClient(create_app())
+    assert client.get("/healthz").json()["schema"] == "ok"
+    _done()
+
+
+def test_code_without_its_migration_files_says_so(tmp_path, monkeypatch, capsys):
+    """app/ updated, migrations/ not: "up to date" would be a lie."""
+    from app import schema
+    from app.cli import main as cli_main
+    from app.main import create_app
+
+    use_empty_database(tmp_path, monkeypatch)
+    run_migrations()
+    monkeypatch.setattr(schema, "REQUIRED_REVISION", "0004")
+    assert schema.schema_state().status == "incomplete"
+    with pytest.raises(schema.SchemaError, match="migrations/ folder"):
+        create_app()
+    assert cli_main(["migrate"]) == 1
+    captured = capsys.readouterr()
+    assert "needs schema revision 0004" in captured.err and "up to date" not in captured.out
+    _done()
+
+
+def test_migrate_and_status_report_what_they_looked_at(data_dir, capsys):
     from app.cli import main as cli_main
 
+    assert cli_main(["migrate"]) == 0
+    output = capsys.readouterr().out
+    assert str(data_dir / "database.sqlite3") in output
+    assert "Already up to date: schema revision 0003, all tables checked." in output
     assert cli_main(["status"]) == 0
     output = capsys.readouterr().out
-    assert str(data_dir) in output
-    assert "matches this code" in output
+    assert str(data_dir) in output and "migrations" in output
+    assert "revision 0003 — ok" in output
     assert "0 user(s), 0 page(s)" in output
