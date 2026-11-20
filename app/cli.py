@@ -10,17 +10,13 @@ from pathlib import Path
 from app.config import BASE_DIR, get_settings
 from app.db import reset_engine, session_scope
 from app.errors import AppError
-
-
-def run_migrations() -> None:
-    from alembic import command
-    from alembic.config import Config
-
-    get_settings().ensure_directories()
-    config = Config(str(BASE_DIR / "alembic.ini"))
-    config.set_main_option("script_location", str(BASE_DIR / "migrations"))
-    command.upgrade(config, "head")
-    reset_engine()
+from app.schema import (
+    MIGRATIONS_DIR,
+    _revisions,
+    explain,
+    run_migrations,
+    schema_state,
+)
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -41,9 +37,64 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_migrate(_args: argparse.Namespace) -> int:
-    run_migrations()
-    print("Database is up to date.")
+def cmd_migrate(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    before = schema_state(settings)
+    print(f"Database:   {settings.database_path}")
+    print(f"Migrations: {MIGRATIONS_DIR / 'versions'} (newest: {before.head or 'none'})")
+    if before.status in ("incomplete", "ahead"):
+        print(f"\n{explain(before, settings)}", file=sys.stderr)
+        return 1
+    if args.assume is not None:
+        _head, known = _revisions()
+        if args.assume not in known:
+            print(f"Unknown revision {args.assume!r}. Known: {', '.join(known)}", file=sys.stderr)
+            return 1
+        print(f"Treating the database as schema revision {args.assume}.")
+    run_migrations(assume=args.assume)
+    after = schema_state(settings)
+    if after.status != "ok":
+        # Never report success on the revision number alone.
+        print(f"\n{explain(after, settings)}", file=sys.stderr)
+        return 1
+    if before.current == after.current and args.assume is None:
+        print(f"Already up to date: schema revision {after.current}, all tables checked.")
+    else:
+        start = args.assume or before.current or "none"
+        print(f"Upgraded from schema revision {start} to {after.current}.")
+    return 0
+
+
+def cmd_status(_args: argparse.Namespace) -> int:
+    """Which code, which data and whether they fit: the first thing to check."""
+    import sqlite3
+
+    from app import __version__
+
+    settings = get_settings()
+    state = schema_state(settings)
+    print(f"KamiSpace {__version__} (needs schema revision {state.required})")
+    print(f"Code:       {BASE_DIR}")
+    print(f"Migrations: {MIGRATIONS_DIR / 'versions'} (newest: {state.head or 'none'})")
+    print(f"Data:       {settings.data_dir}")
+    print(f"Database:   {settings.database_path}")
+    print(f"Log:        {settings.logs_dir / 'kamispace.log'}")
+    if not settings.database_path.is_file():
+        print("            (the database does not exist yet; it is created on the first start)")
+        return 0 if state.status != "incomplete" else 1
+    connection = sqlite3.connect(settings.database_path, timeout=5)
+    try:
+        users = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        pages = connection.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
+        print(f"Contents:   {users} user(s), {pages} page(s)")
+    except sqlite3.OperationalError as error:
+        print(f"Contents:   could not be read ({error})")
+    finally:
+        connection.close()
+    print(f"Schema:     revision {state.current or 'none'} — {state.status}")
+    if state.status != "ok":
+        print(f"\n{explain(state, settings)}")
+        return 1
     return 0
 
 
@@ -132,7 +183,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.set_defaults(func=cmd_run)
 
+    status = commands.add_parser(
+        "status", help="Show which code and data are in use and whether they fit together"
+    )
+    status.set_defaults(func=cmd_status)
+
     migrate = commands.add_parser("migrate", help="Apply database migrations")
+    migrate.add_argument(
+        "--assume",
+        metavar="REVISION",
+        help="repair: first mark the database as being at this schema revision "
+        "(when the mark does not say what the database really contains)",
+    )
     migrate.set_defaults(func=cmd_migrate)
 
     admin = commands.add_parser("create-admin", help="Create an administrator account")

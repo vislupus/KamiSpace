@@ -266,15 +266,62 @@ sudo -u kamispace env UV_PYTHON_INSTALL_DIR=/opt/kamispace/.python uv sync --fro
 sudo systemctl restart kamispace
 ```
 
-Database migrations are applied on start (`KAMISPACE_AUTO_MIGRATE=true`). The
-built frontend is part of the repository, so no Node.js is needed on the
-server.
+Database migrations are applied when the application starts — however it is
+started (`python -m app run`, uvicorn directly, a container). The built
+frontend is part of the repository, so no Node.js is needed on the server.
+
+**The code and the database must be updated together.** A migration changes
+the database for good; a copy of the *old* code that keeps running against it
+(a service that was restarted but still runs from an older checkout, image or
+release directory) fails with "Something went wrong on the server". Check what
+is actually running:
+
+```bash
+curl -s http://127.0.0.1:8000/healthz
+```
+
+It answers with the version and whether the database fits it, for example
+`{"status":"ok","version":"0.2.0","schema":"ok","revision":"0003"}`. An answer
+without `version` comes from a release older than 0.2.0. And to see which code and
+which data a command (or the service's own environment) is using:
+
+```bash
+sudo -u kamispace uv run --frozen --no-dev python -m app status
+```
+
+```text
+KamiSpace 0.2.0 (needs schema revision 0003)
+Code:       /opt/kamispace
+Migrations: /opt/kamispace/migrations/versions (newest: 0003)
+Data:       /opt/kamispace/data
+Database:   /opt/kamispace/data/database.sqlite3
+Log:        /opt/kamispace/data/logs/kamispace.log
+Contents:   4 user(s), 212 page(s)
+Schema:     revision 0003 — ok
+```
+
+The check does not trust the revision number alone: the tables and columns
+the code uses are compared with what the database really has. Anything but
+`ok` comes with an explanation and the command to run:
+
+| Schema | Meaning | What to do |
+|---|---|---|
+| `behind` | The database is older than the code | `python -m app migrate` (or just start the service) |
+| `ahead` | The database was upgraded by a newer version | Update the code in this directory |
+| `incomplete` | The code is newer than the files in `migrations/versions` | The update copied only part of the project; update all of it |
+| `damaged` | The revision mark says "newest" but tables or columns are missing (the database file was replaced by an older copy, or the mark was set by hand) | Back up, then `python -m app migrate --assume <revision it really is at>` |
+
+If *Code* or *Data* is not the directory the service runs from, the command
+was looking at another copy: run it with the service's working directory and
+environment (`KAMISPACE_DATA_DIR`, `.env`).
 
 ## 11. Troubleshooting
 
 | Symptom | Check |
 |---|---|
 | 502 from the proxy | `systemctl status kamispace`, `journalctl -u kamispace -n 50` |
+| "Something went wrong" / 500 on every page right after an update | The running code and the database do not match. `curl …/healthz`: no `version` in the answer → the service still runs the old code, deploy the new code where the service runs and restart; `"schema"` other than `ok` → `python -m app status` explains it and names the command. The exact error is at the end of `data/logs/kamispace.log` (`no such column: pages.small_text` = old code, new database; `no such column: pages.kind` = new code, old database) |
+| The service does not start after an update, the log says "schema revision … does not know" | The database was upgraded by a newer version than the code that is starting: update the code in that directory (`git pull`, `uv sync`) |
 | "Cross-site request blocked" when saving | The proxy must pass the original `Host` header |
 | Signed out immediately after signing in | `KAMISPACE_COOKIE_SECURE=always` requires HTTPS; the proxy must send `X-Forwarded-Proto` |
 | "Invalid host header" | Add the host name to `KAMISPACE_ALLOWED_HOSTS` |
