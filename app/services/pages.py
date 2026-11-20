@@ -33,7 +33,7 @@ from app.models import (
     User,
     Workspace,
 )
-from app.services import files, search, tasks, versions
+from app.services import databases, files, search, tasks, versions
 from app.services.document import (
     EMPTY_DOC,
     append_page_link,
@@ -185,6 +185,7 @@ def list_tree(db: Session, access: Access) -> list[dict[str, Any]]:
             Page.icon,
             Page.position,
             Page.updated_at,
+            Page.kind,
         )
         .where(Page.workspace_id.in_(workspace_ids), Page.deleted_at.is_(None))
         .order_by(Page.position, Page.id)
@@ -199,6 +200,7 @@ def list_tree(db: Session, access: Access) -> list[dict[str, Any]]:
             visible[row.id] = row
             roles[row.id] = role
 
+    databases = {row.id for row in rows if row.kind == "database"}
     result = []
     for row in visible.values():
         is_member = row.workspace_id in access.memberships
@@ -213,6 +215,9 @@ def list_tree(db: Session, access: Access) -> list[dict[str, Any]]:
                 "position": row.position,
                 "updated_at": row.updated_at.isoformat(),
                 "role": roles[row.id],
+                "kind": row.kind,
+                # A row of a database (kept out of the sidebar).
+                "is_row": row.parent_id in databases,
                 # Reached through a share, shown under "Shared with me".
                 "shared": not is_member,
             }
@@ -295,7 +300,8 @@ def create_page(
         versions.record_version(db, page, user)
         tasks.sync_page(db, page)
     search.index_page(db, page)
-    if parent is not None and link_in_parent and not parent.locked:
+    is_row = parent is not None and parent.kind == "database"
+    if parent is not None and link_in_parent and not parent.locked and not is_row:
         _link_child(db, access, parent, page)
     return page
 
@@ -327,9 +333,11 @@ def page_detail(db: Session, access: Access, page: Page) -> dict[str, Any]:
         "cover_attachment_id": page.cover_attachment_id,
         "cover_position": page.cover_position,
         "font": page.font,
-        "small_text": page.small_text,
+        "text_size": page.text_size,
         "full_width": page.full_width,
         "locked": page.locked,
+        "kind": page.kind,
+        "row": databases.row_context(db, access, page),
         "content": page.content,
         "revision": page.revision,
         "role": role,
@@ -359,7 +367,7 @@ def update_meta(
     # A locked page only accepts being unlocked.
     if page.locked and set(fields) - {"locked"}:
         raise Locked()
-    for name in ("cover_position", "font", "small_text", "full_width", "locked"):
+    for name in ("cover_position", "font", "text_size", "full_width", "locked"):
         if fields.get(name) is not None:
             setattr(page, name, fields[name])
     title_changed = False
@@ -595,8 +603,11 @@ def duplicate_page(db: Session, access: Access, page_id: int) -> Page:
             cover_attachment_id=original.cover_attachment_id,
             cover_position=original.cover_position,
             font=original.font,
-            small_text=original.small_text,
+            text_size=original.text_size,
             full_width=original.full_width,
+            kind=original.kind,
+            db_schema=copy.deepcopy(original.db_schema),
+            props=copy.deepcopy(original.props),
             content=copy.deepcopy(original.content),
             revision=1,
             position=position,

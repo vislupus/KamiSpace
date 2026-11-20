@@ -50,7 +50,7 @@ def update_page(page_id: int, body: PageMetaIn, access: UserAccess, db: Db) -> d
         "cover_attachment_id": page.cover_attachment_id,
         "cover_position": page.cover_position,
         "font": page.font,
-        "small_text": page.small_text,
+        "text_size": page.text_size,
         "full_width": page.full_width,
         "locked": page.locked,
         "updated_at": page.updated_at.isoformat(),

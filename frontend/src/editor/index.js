@@ -24,6 +24,7 @@ import { BlockEquation, InlineEquation } from './extensions/equation.js';
 import { ImageBlock } from './extensions/image.js';
 import { LinkEditor } from './extensions/link-editor.js';
 import { Audio, Video } from './extensions/media.js';
+import { DatabaseBlock } from './extensions/database.js';
 import { PageLink, PageMention, PageMentions } from './extensions/page-link.js';
 import { PasteImages } from './extensions/paste-images.js';
 import { SlashCommands } from './extensions/slash.js';
@@ -81,6 +82,7 @@ function schemaExtensions(context, upload = null) {
     BlockEquation,
     InlineEquation,
     PageLink,
+    DatabaseBlock,
     PageMention,
     TextColor,
     Highlight,

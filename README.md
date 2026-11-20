@@ -261,7 +261,7 @@ Backspace right after a conversion — or Ctrl+Z — turns it back.
 `/toggleh1` `/toggleh2` `/toggleh3` `/quote` `/code` `/callout` `/divider`
 `/table` `/columns2` `/columns3` `/columns4` `/page` `/linkpage` `/image`
 `/video` `/audio` `/file` `/embed` `/bookmark` `/equation` `/inlineequation`
-`/link`
+`/link` `/database` `/board`
 
 **Blocks** — every line is a block, wherever it lives: on the page, inside a
 toggle, a column, a callout, a quote, or as an item of a list. Hover a block
@@ -284,6 +284,35 @@ again, and blocks can be dragged in (drop on the summary, slightly indented,
 or between the lines inside) and out.
 
 **Columns** put blocks side by side (2–5 columns); on a phone they stack.
+Pointing at a column layout outlines every column, so it is clear where each
+one begins and ends.
+
+**Spacing** follows Notion: paragraphs stand apart, list items and toggles sit
+close together, headings get air above them — the same on the page, inside
+toggles and in columns.
+
+**Databases** — `/database` puts a table into the page, `/board` a Kanban
+board. Both are views of the same thing: a set of rows, where every row is a
+page of its own with *properties* (status, person, date, number, select,
+multi-select, checkbox, URL, text).
+
+- *Table*: click a cell to edit it; **New** or *+ New page* adds a row and
+  starts typing its name; the *Open* button on a row opens it as a page. Click
+  a column header to rename the property, change its type, sort, filter, hide
+  or delete it; drag its right edge to resize, drag the header to reorder; `+`
+  adds a property. The last line can count, sum or average a column, and a
+  number can be shown as a progress bar.
+- *Board*: one column per status (or person, or any select property — *Group
+  by* in the view menu). Drag cards between columns and up and down; *+ New
+  page* adds a card to that column; *Add a group* adds a status.
+- Views are the tabs above the database: add as many as you like, each with
+  its own filters, sorting, visible properties and layout. Click the active
+  tab for its options.
+- A row opened as a page shows its properties under the title and has normal
+  page content below. Rows inherit sharing from the database, can be shared on
+  their own, and go to the recycle bin when deleted (with *Undo*).
+- The database itself is a sub-page: the ⤢ button (or the sidebar) opens it as
+  a full page, and it can be moved like any page.
 
 **Equations** are written in TeX and typeset with KaTeX: a block equation
 (`/equation`) or inline in a sentence (`$$…$$`, Ctrl+Shift+E, or the toolbar).
@@ -315,14 +344,26 @@ that text.
 pictures: each picture is uploaded and placed where it was in the text.
 
 **Tasks** — a to-do item (`[]` or `/todo`) has two small buttons on its right:
-a person (assign it to someone) and a calendar (due date). Everything assigned
-to you, from every page you can open, is listed under **My tasks** in the
-sidebar, where it can be ticked off directly. The page must be shared with the
-person for them to see the task.
+a person (assign it to someone) and a calendar (due date). Faster ways to hand
+out work:
+
+- type `@name` inside a to-do item to assign it;
+- press Enter: the next item goes to the same person with the same due date;
+- select several items and use the person button of one of them — all of them
+  are assigned;
+- or choose *Assign all in this list* from that button.
+
+Everything assigned to you is listed under **My tasks** in the sidebar and can
+be ticked off there. The person a task is given to can always tick it: in the
+page itself when they can only read it, and from *My tasks* when the page is
+not shared with them at all (they then see the text of that one task, nothing
+else of the page). For work that needs more than a checklist — a status, a
+board, several people — use a database (above) with a *Person* property.
 
 **Page menu (⋯)** — *Copy link*, *Copy page contents* (as Markdown and rich
-text), *Appearance & layout* (default / serif / mono font, small text, full
-width), *Lock page* (nobody can edit until it is unlocked), *Export as
+text), *Appearance & layout* (default / serif / mono font, **text size** from
+12 to 32 px with a live slider — headings and the title scale with it — and
+full width), *Lock page* (nobody can edit until it is unlocked), *Export as
 Markdown*, *Import Markdown as sub-page*, version history.
 
 **Markdown files** — *Export as Markdown* downloads the page as a `.md` file;
@@ -393,7 +434,7 @@ pages, versions, conflicts, uploads, search, backups, migrations):
 uv run pytest
 ```
 
-Browser tests (Playwright, 140+ tests: Markdown shortcuts, slash commands,
+Browser tests (Playwright, 155+ tests: databases and boards, tasks, Markdown shortcuts, slash commands,
 block drag-and-drop (also into toggles), pictures, toolbar, links, uploads,
 autosave, conflicts, responsive
 layout at laptop sizes, long-document performance):
@@ -461,9 +502,10 @@ automated tests.
 | Block handling | `+` button, drag handle with drop indicator and block menu (turn into, duplicate, move, delete) for every block at any depth — inside toggles, columns, callouts, quotes and for single list items; keyboard move/duplicate; floating selection toolbar |
 | Links | Hover card (address, copy, edit, remove), click to open, Ctrl+K editor with page suggestions, "Paste as" URL / bookmark / embed |
 | Files | Drag-and-drop and paste upload with placeholders, images with resize handles, alignment, caption and full-size view (lazy loaded), video and audio players with seeking, PDF preview, download cards; type allow-list with content sniffing, size limit, generated storage names, access-controlled downloads |
-| Pages | Unlimited nesting, sub-pages linked in their parent, icon, cover image with repositioning, appearance (font, small text, full width), lock, create / rename / move (dialog and sidebar drag-and-drop) / duplicate / delete, recycle bin, favourites, recents, breadcrumbs, library of all pages |
+| Pages | Unlimited nesting, sub-pages linked in their parent, icon, cover image with repositioning, appearance (font, text size, full width), lock, create / rename / move (dialog and sidebar drag-and-drop) / duplicate / delete, recycle bin, favourites, recents, breadcrumbs, library of all pages |
 | Markdown | Export a page as `.md`, import `.md` files as pages, copy page contents |
-| Tasks | Assign to-do items to people, due dates, "My tasks" across all pages with a counter, tick off from the list |
+| Tasks | Assign to-do items to people (`@name`, carried over on Enter, several at once, whole list), due dates, "My tasks" with a counter; the assignee can tick a task from the list or in a read-only page |
+| Databases | Inline or full-page; rows are pages; properties: title, text, number (plain, percent, progress bar), select, multi-select, status, date (with end date), person, checkbox, URL; table view (inline editing, resize and reorder columns, drag rows, calculations) and board view (group by status / select / person, drag cards); several views per database with filters, sorts, search and hidden properties; row pages with a property list; permissions, recycle bin and search as for pages |
 | Search | SQLite FTS5 over titles, content and page hierarchy; prefix matching, ranked, highlighted snippets, permission filtered; Ctrl+K palette with keyboard navigation |
 | Accounts | Username and password only, changeable username, Argon2id hashes, server-side sessions in HttpOnly cookies, idle and absolute expiry, CSRF protection, sign-in rate limiting, change password, list and revoke own sessions |
 | Administration | Create and rename users, invitation links, optional open registration, deactivate, reset password, admin role, team workspaces and members, activity log |
@@ -482,7 +524,8 @@ automated tests.
 | Embeds | Many sites refuse to be shown inside another page; for those the frame stays empty and the link below it opens the site. Only `https` pages can be embedded |
 | Web bookmarks | Title and description are fetched by the server, which therefore needs outbound internet access (and no proxy in between). Without it the card shows the address |
 | Markdown export | Pictures and files are referenced, not bundled, so a `.md` file imports with its pictures only on the same KamiSpace instance. Text colours, assignees and due dates are not written to Markdown |
-| Tasks | The assignee is not notified (nothing is emailed); they see the task in "My tasks" |
+| Tasks | The assignee is not notified (nothing is emailed); they see the task in "My tasks". Rows of a database that have a person are not listed there — "My tasks" covers to-do items |
+| Databases | No relations between databases, roll-ups or formulas; views are table and board (no timeline, calendar or gallery). Property values are not part of version history and are not searched (row names and page text are). Deleting the database block from a page leaves the database as a sub-page; delete that page to remove it. Two people editing the same database see each other's changes after reloading |
 | Images | Width is kept as a percentage of the text column (10–100 %). Pictures cannot be cropped, and text does not wrap around them |
 | Links | Clicking a link opens it (as in Notion); to change its text, edit around it or use *Edit link* on the hover card. The hover card needs a pointer |
 | Touch devices | Reading and typing work and the layout adapts, but block handles and drag-and-drop need a pointer |
@@ -493,7 +536,8 @@ automated tests.
 ### Planned — not implemented
 
 Backlinks ("pages that link here"), graph view, templates, comments, synced
-blocks, databases / board views, PDF export, side-by-side version comparison
+blocks, database relations / roll-ups / formulas and timeline or calendar
+views, PDF export, side-by-side version comparison
 (full snapshots are already stored for it), real-time collaborative editing,
 two-factor authentication.
 
@@ -512,6 +556,15 @@ automatically, or run `python -m app migrate`).
   theme choice is carried over.
 - Old backup archives (`minddock-backup-…zip`) can still be listed, downloaded
   and restored.
+
+### Upgrading an existing KamiSpace
+
+Pull the new code and start it; the database is migrated in place.
+
+- Pages with "Small text" keep their look: they get a text size of 14 px.
+- Tasks assigned to somebody without access to the page now show up in that
+  person's "My tasks" (the task only, not the page) — see
+  [docs/SECURITY.md](docs/SECURITY.md).
 
 ## License
 

@@ -66,7 +66,9 @@ function byPosition(a, b) {
 export function childrenOf(parentId) {
   const result = [];
   for (const page of store.pages.values()) {
-    if (page.parent_id === parentId) result.push(page);
+    // Rows of a database are pages too, but they live in the database, not
+    // in the page tree.
+    if (page.parent_id === parentId && !page.is_row) result.push(page);
   }
   return result.sort(byPosition);
 }
@@ -92,7 +94,7 @@ export function sharedRoots() {
 
 export function hasChildren(pageId) {
   for (const page of store.pages.values()) {
-    if (page.parent_id === pageId) return true;
+    if (page.parent_id === pageId && !page.is_row) return true;
   }
   return false;
 }

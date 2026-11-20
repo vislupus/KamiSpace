@@ -140,9 +140,9 @@ def test_upgrade_from_the_first_release_keeps_existing_data(tmp_path, monkeypatc
             ("admin", 1)
         ]
         assert connection.execute(
-            "SELECT title, revision, cover_position, font, small_text, full_width, locked "
+            "SELECT title, revision, cover_position, font, text_size, full_width, locked "
             "FROM pages WHERE id = 1"
-        ).fetchall() == [("Kept page", 4, 50, "default", 0, 0, 0)]
+        ).fetchall() == [("Kept page", 4, 50, "default", 16, 0, 0)]
         # Sub-pages that already existed are now linked in their parent.
         parent = json.loads(
             connection.execute("SELECT content FROM pages WHERE id = 1").fetchone()[0]
@@ -153,6 +153,50 @@ def test_upgrade_from_the_first_release_keeps_existing_data(tmp_path, monkeypatc
         ]
         assert connection.execute("SELECT COUNT(*) FROM sessions").fetchone() == (1,)
         assert connection.execute("SELECT COUNT(*) FROM workspace_members").fetchone() == (1,)
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    finally:
+        connection.close()
+    reset_engine()
+    get_settings.cache_clear()
+
+
+def test_small_text_becomes_a_text_size(tmp_path, monkeypatch):
+    """0003: the "small text" switch is replaced by a text size in pixels."""
+    use_empty_database(tmp_path, monkeypatch)
+    get_settings().ensure_directories()
+    command.upgrade(alembic_config(), "0002")
+    connection = sqlite3.connect(get_settings().database_path)
+    connection.executescript(
+        """
+        INSERT INTO users (id, username, password_hash, is_admin, is_active, created_at,
+                           updated_at)
+        VALUES (1, 'admin', 'x', 1, 1, '2026-01-01', '2026-01-01');
+        INSERT INTO workspaces (id, name, kind, owner_id, created_at)
+        VALUES (1, 'Personal', 'personal', 1, '2026-01-01');
+        INSERT INTO pages (id, workspace_id, title, content, revision, position, owner_id,
+                           created_at, updated_at, cover_position, font, small_text,
+                           full_width, locked)
+        VALUES (1, 1, 'Small', '{"type": "doc"}', 1, 1, 1, '2026-01-01', '2026-01-01',
+                50, 'default', 1, 0, 0),
+               (2, 1, 'Normal', '{"type": "doc"}', 1, 2, 1, '2026-01-01', '2026-01-01',
+                50, 'serif', 0, 1, 0);
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    run_migrations()
+    connection = sqlite3.connect(get_settings().database_path)
+    try:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(pages)")}
+        assert "small_text" not in columns
+        assert {"text_size", "kind", "db_schema", "props"} <= columns
+        assert connection.execute(
+            "SELECT title, text_size, kind, font, full_width, props FROM pages ORDER BY id"
+        ).fetchall() == [
+            ("Small", 14, "page", "default", 0, None),
+            ("Normal", 16, "page", "serif", 1, None),
+        ]
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         connection.close()

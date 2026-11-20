@@ -43,19 +43,21 @@ def task_doc(*items: tuple[str, str, int | None, bool]) -> dict:
 
 def test_appearance_and_cover_position_are_saved(alice):
     page = alice.create_page("Styled")
-    assert (page["font"], page["small_text"], page["full_width"], page["cover_position"]) == (
+    assert (page["font"], page["text_size"], page["full_width"], page["cover_position"]) == (
         "default",
-        False,
+        16,
         False,
         50,
     )
     response = alice.patch(
         f"/api/pages/{page['id']}",
-        json={"font": "serif", "small_text": True, "full_width": True, "cover_position": 12},
+        json={"font": "serif", "text_size": 20, "full_width": True, "cover_position": 12},
     )
     assert response.status_code == 200
     stored = alice.get(f"/api/pages/{page['id']}").json()
-    assert (stored["font"], stored["small_text"], stored["full_width"]) == ("serif", True, True)
+    assert (stored["font"], stored["text_size"], stored["full_width"]) == ("serif", 20, True)
+    for size in (8, 60):
+        assert alice.patch(f"/api/pages/{page['id']}", json={"text_size": size}).status_code == 422
     assert stored["cover_position"] == 12
     assert alice.patch(f"/api/pages/{page['id']}", json={"font": "comic"}).status_code == 422
     assert alice.patch(f"/api/pages/{page['id']}", json={"cover_position": 140}).status_code == 422
@@ -185,20 +187,48 @@ def test_tasks_respect_permissions_trash_and_lock(alice, bob, carol):
             "base_revision": 1,
         },
     )
-    # Assigned, but the page was never shared with bob: nothing leaks.
-    assert bob.get("/api/tasks").json() == []
-    assert bob.bootstrap()["open_tasks"] == 0
-    assert (
-        bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code == 404
-    )
-
-    alice.put(f"/api/pages/{page['id']}/shares/{bob.user_id}", json={"role": "viewer"})
+    # Assigned, but the page was never shared with bob: he sees his task and
+    # nothing else of the page — not its title, not its content.
     listed = bob.get("/api/tasks").json()
-    assert [t["can_toggle"] for t in listed] == [False]  # viewers see, but cannot tick
+    assert [(t["text"], t["page_title"], t["can_open"]) for t in listed] == [
+        ("Secret task", None, False)
+    ]
+    assert bob.bootstrap()["open_tasks"] == 1
+    assert bob.get(f"/api/pages/{page['id']}").status_code == 404
+    # Somebody the task is not assigned to gets the same answer as for no page.
     assert (
-        bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code == 403
+        carol.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code
+        == 404
     )
     assert carol.get("/api/tasks").json() == []
+    # The assignee can tick it off, and untick it again.
+    assert (
+        bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code == 200
+    )
+    stored = alice.get(f"/api/pages/{page['id']}").json()
+    assert stored["content"]["content"][0]["content"][0]["attrs"]["checked"] is True
+    assert (
+        bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": False}).status_code == 200
+    )
+    assert bob.get(f"/api/pages/{page['id']}").status_code == 404
+
+    # A viewer can tick the tasks assigned to them, but no other task.
+    alice.put(f"/api/pages/{page['id']}/shares/{bob.user_id}", json={"role": "viewer"})
+    alice.put(f"/api/pages/{page['id']}/shares/{carol.user_id}", json={"role": "viewer"})
+    listed = bob.get("/api/tasks").json()
+    assert [(t["can_toggle"], t["can_open"], t["page_title"]) for t in listed] == [
+        (True, True, "Private plan")
+    ]
+    assert (
+        bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code == 200
+    )
+    assert (
+        bob.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": False}).status_code == 200
+    )
+    assert (
+        carol.put(f"/api/pages/{page['id']}/tasks/task-1", json={"checked": True}).status_code
+        == 404
+    )
 
     alice.put(f"/api/pages/{page['id']}/shares/{bob.user_id}", json={"role": "editor"})
     alice.patch(f"/api/pages/{page['id']}", json={"locked": True})

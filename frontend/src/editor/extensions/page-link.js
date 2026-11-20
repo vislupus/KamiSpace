@@ -136,9 +136,27 @@ export async function insertSubPage(editor, title = '') {
   context.openPage(page.id);
 }
 
-function mentionItems(editor, query, { canCreate }) {
+/** Position of the to-do item the caret is in, or null. */
+function enclosingTask(state) {
+  const { $from } = state.selection;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type.name === 'taskItem') return $from.before(depth);
+  }
+  return null;
+}
+
+function mentionItems(editor, query, { canCreate, people = false }) {
   const context = appContext(editor);
   const needle = query.trim().toLowerCase();
+  // Inside a to-do item "@" first offers people: picking one assigns the task.
+  const assignees =
+    people && enclosingTask(editor.state) !== null
+      ? context
+          .listUsers()
+          .filter((user) => !needle || user.username.toLowerCase().includes(needle))
+          .slice(0, 6)
+          .map((user) => ({ id: `user-${user.id}`, kind: 'person', user }))
+      : [];
   const pages = context
     .listPages()
     .filter((page) => page.id !== context.pageId)
@@ -151,7 +169,7 @@ function mentionItems(editor, query, { canCreate }) {
     .slice(0, 8)
     .map((page) => ({ id: `page-${page.id}`, kind: 'page', page }));
   if (needle && canCreate) pages.push({ id: 'create', kind: 'create', title: query.trim() });
-  return pages;
+  return [...assignees, ...pages];
 }
 
 function mentionSuggestion(editor, char, pluginKey) {
@@ -166,8 +184,23 @@ function mentionSuggestion(editor, char, pluginKey) {
     allowSpaces: !isAt,
     allowedPrefixes: isAt ? [' ', '('] : null,
     allow: ({ state, range }) => !state.doc.resolve(range.from).parent.type.spec.code,
-    items: ({ query }) => mentionItems(editor, query, { canCreate: !isAt }),
+    items: ({ query }) => mentionItems(editor, query, { canCreate: !isAt, people: isAt }),
     command: ({ editor: target, range, props: item }) => {
+      if (item.kind === 'person') {
+        target
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .command(({ tr, state }) => {
+            const pos = enclosingTask(state);
+            const node = pos === null ? null : tr.doc.nodeAt(pos);
+            if (!node) return false;
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, assignee: item.user.id });
+            return true;
+          })
+          .run();
+        return;
+      }
       if (item.kind === 'create') {
         target.chain().focus().deleteRange(range).run();
         const context = appContext(target);
@@ -195,7 +228,13 @@ function mentionSuggestion(editor, char, pluginKey) {
       emptyText: 'No pages found',
       onEscape: (view) => exitSuggestion(view, pluginKey),
       renderItem: (item) =>
-        item.kind === 'create'
+        item.kind === 'person'
+          ? [
+              h('span', { class: 'mention-icon' }, icon('user', 16)),
+              h('span', { class: 'slash-title' }, item.user.username),
+              h('span', { class: 'slash-hint' }, 'Assign'),
+            ]
+          : item.kind === 'create'
           ? [
               h('span', { class: 'mention-icon' }, icon('plus', 16)),
               h('span', { class: 'slash-title' }, `New sub-page “${item.title}”`),

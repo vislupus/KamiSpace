@@ -57,6 +57,18 @@ plus the FTS5 table `pages_fts`. The schema is created by Alembic
   the document whenever a page is saved. The document stays the source of
   truth — ticking a task in "My tasks" edits the document (and bumps its
   revision) like any other change.
+- **Databases** are pages of kind `database` (`pages.kind`). The schema —
+  properties and views — is one JSON document on that page (`db_schema`); the
+  rows are its sub-pages, each with its values in `pages.props`. Rows are
+  therefore ordinary pages: they inherit access through the page tree, have
+  content and versions, are found by search and go to the recycle bin. The
+  sidebar leaves rows out (`is_row` in the tree). A `database` block in a
+  document only stores the id of the database page it shows.
+  `app/services/databases.py` is the allow-list: property types, option
+  colours, view settings and every value are checked there; changing a
+  property re-checks the values of all rows. Filtering, sorting, grouping and
+  calculations happen in the browser (`frontend/src/app/database/`), on the
+  rows the server already decided the user may see.
 - **Page links** store the id of the page they point to. Titles and icons are
   looked up when a link is shown, so links never go stale and a reader only
   ever sees the titles of pages they may open. Creating a sub-page appends a

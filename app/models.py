@@ -150,10 +150,18 @@ class Page(Base):
     cover_position: Mapped[int] = mapped_column(Integer, default=50)
     # Appearance & layout, shared by everyone who opens the page.
     font: Mapped[str] = mapped_column(String(16), default="default")
-    small_text: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Size of ordinary text in pixels; headings scale with it.
+    text_size: Mapped[int] = mapped_column(Integer, default=16)
     full_width: Mapped[bool] = mapped_column(Boolean, default=False)
     # A locked page cannot be edited until somebody with edit rights unlocks it.
     locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "page", or "database": a page that holds a table of rows. The rows are
+    # its sub-pages, so they inherit access, can be opened, shared and trashed.
+    kind: Mapped[str] = mapped_column(String(16), default="page")
+    # For a database: its properties (columns) and views.
+    db_schema: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # For a row of a database: property id → value.
+    props: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     content: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     # Incremented on every content save; the basis for optimistic concurrency.
     revision: Mapped[int] = mapped_column(Integer, default=1)

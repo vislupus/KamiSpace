@@ -27,6 +27,7 @@ const HANDLE_HEIGHT = 24;
 const HANDLE_WIDTH = 46;
 const CENTERED_TYPES = new Set(['horizontalRule']);
 const TOP_ALIGNED_TYPES = new Set([
+  'database',
   'image',
   'attachment',
   'table',

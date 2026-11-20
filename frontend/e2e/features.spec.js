@@ -676,7 +676,7 @@ test.describe('Page menu', () => {
     await waitForSaved(page);
   });
 
-  test('appearance & layout: font, small text and full width are kept', async ({ page }) => {
+  test('appearance & layout: font, text size and full width are kept', async ({ page }) => {
     const created = await openNewPage(page, session, { title: 'Styled', content: doc('some text') });
     const article = page.locator('article.page');
     const choose = async (label) => {
@@ -690,19 +690,21 @@ test.describe('Page menu', () => {
     await choose('Serif');
     await expect(article).toHaveClass(/font-serif/);
     expect(await editor(page).evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/Charter|Georgia|serif/);
-    await choose('Small text');
-    await expect(article).toHaveClass(/is-small/);
+    // Text size: a slider with presets; text, headings and the title follow it.
+    await choose(/Text size/);
+    await page.locator('.text-size-presets').getByRole('button', { name: 'Small' }).click();
     expect(await editor(page).evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeLessThan(sizeBefore);
+    await page.keyboard.press('Escape');
     await choose('Full width');
     await expect(article).toHaveClass(/is-wide/);
     expect((await editor(page).boundingBox()).width).toBeGreaterThan(widthBefore + 100);
 
     await page.reload();
     await expect(page.locator('article.page')).toHaveClass(/font-serif/);
-    await expect(page.locator('article.page')).toHaveClass(/is-small/);
+    expect(await editor(page).evaluate((el) => getComputedStyle(el).fontSize)).toBe('14px');
     await expect(page.locator('article.page')).toHaveClass(/is-wide/);
     const stored = await (await page.request.get(`/api/pages/${created.id}`)).json();
-    expect([stored.font, stored.small_text, stored.full_width]).toEqual(['serif', true, true]);
+    expect([stored.font, stored.text_size, stored.full_width]).toEqual(['serif', 14, true]);
   });
 
   test('the cover image can be moved up and down', async ({ page }) => {
