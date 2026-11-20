@@ -195,6 +195,7 @@ virtual environment in `.venv/`, both inside the project as well.
 ```
 uv run python -m app run [--host H] [--port P] [--reload]   start the server
 uv run python -m app migrate                                apply migrations
+uv run python -m app status                                 which code and data are in use, and do they fit
 uv run python -m app create-admin [--username U]            create an administrator
 uv run python -m app reset-password <username>              set a new password
 uv run python -m app backup                                 write a backup archive
@@ -559,7 +560,14 @@ automatically, or run `python -m app migrate`).
 
 ### Upgrading an existing KamiSpace
 
-Pull the new code and start it; the database is migrated in place.
+Pull the new code **where the service runs**, install (`uv sync`), restart;
+the database is migrated in place when the application starts. Code and
+database go together: old code that keeps running against an upgraded
+database answers "Something went wrong on the server". To check,
+`curl http://<host>/healthz` shows the running version and whether the
+database fits it, and `uv run python -m app status` shows which code and data
+directory a command is using — see
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#10-updating).
 
 - Pages with "Small text" keep their look: they get a text size of 14 px.
 - Tasks assigned to somebody without access to the page now show up in that

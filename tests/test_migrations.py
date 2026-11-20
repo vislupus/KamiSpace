@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import sqlite3
 
+import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 from app.cli import run_migrations
@@ -202,3 +204,84 @@ def test_small_text_becomes_a_text_size(tmp_path, monkeypatch):
         connection.close()
     reset_engine()
     get_settings.cache_clear()
+
+
+# -- the application checks the schema when it starts ---------------------------
+
+
+def _set_revision(revision: str) -> None:
+    connection = sqlite3.connect(get_settings().database_path)
+    connection.execute("UPDATE alembic_version SET version_num = ?", (revision,))
+    connection.commit()
+    connection.close()
+
+
+def test_starting_the_app_upgrades_a_database_that_is_behind(tmp_path, monkeypatch):
+    """Whatever starts the app (not only `python -m app run`), the schema is brought up."""
+    from app.main import create_app
+    from app.schema import schema_state
+
+    use_empty_database(tmp_path, monkeypatch)
+    get_settings().ensure_directories()
+    command.upgrade(alembic_config(), "0002")
+    assert schema_state().status == "behind"
+
+    client = TestClient(create_app())
+    state = schema_state()
+    assert (state.status, state.current) == ("ok", state.head)
+    columns = {
+        row[1]
+        for row in sqlite3.connect(get_settings().database_path).execute("PRAGMA table_info(pages)")
+    }
+    assert {"kind", "text_size"} <= columns
+    health = client.get("/healthz").json()
+    assert health["status"] == "ok" and health["schema"] == "ok" and health["version"]
+    reset_engine()
+    get_settings.cache_clear()
+
+
+def test_a_database_that_is_behind_stops_the_start_when_auto_migrate_is_off(tmp_path, monkeypatch):
+    from app.main import create_app
+    from app.schema import SchemaError
+
+    use_empty_database(tmp_path, monkeypatch)
+    monkeypatch.setenv("KAMISPACE_AUTO_MIGRATE", "false")
+    get_settings.cache_clear()
+    get_settings().ensure_directories()
+    command.upgrade(alembic_config(), "0002")
+    with pytest.raises(SchemaError, match="python -m app migrate"):
+        create_app()
+    reset_engine()
+    get_settings.cache_clear()
+
+
+def test_older_code_refuses_a_database_from_a_newer_version(tmp_path, monkeypatch, capsys):
+    """Old code on an upgraded database must say so, not fail request by request."""
+    from app.cli import main as cli_main
+    from app.main import create_app
+    from app.schema import SchemaError, schema_state
+
+    use_empty_database(tmp_path, monkeypatch)
+    run_migrations()
+    _set_revision("9999")
+    assert schema_state().status == "ahead"
+    with pytest.raises(SchemaError, match="newer version"):
+        create_app()
+    # The command line says the same, and does not touch the database.
+    assert cli_main(["migrate"]) == 1
+    assert "does not know" in capsys.readouterr().err
+    assert cli_main(["status"]) == 1
+    output = capsys.readouterr().out
+    assert str(get_settings().database_path) in output and "newer than this code" in output
+    reset_engine()
+    get_settings.cache_clear()
+
+
+def test_status_command_reports_code_data_and_schema(data_dir, capsys):
+    from app.cli import main as cli_main
+
+    assert cli_main(["status"]) == 0
+    output = capsys.readouterr().out
+    assert str(data_dir) in output
+    assert "matches this code" in output
+    assert "0 user(s), 0 page(s)" in output

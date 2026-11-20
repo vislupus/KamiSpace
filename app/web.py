@@ -14,6 +14,7 @@ from app import __version__
 from app.config import BASE_DIR, get_settings
 from app.deps import get_optional_session
 from app.models import UserSession
+from app.schema import schema_state
 
 router = APIRouter(include_in_schema=False)
 templates = Jinja2Templates(directory=BASE_DIR / "app" / "templates")
@@ -101,4 +102,10 @@ def app_shell(request: Request, session: OptionalSession) -> Response:
 
 @router.get("/healthz")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    """Is the service up, which version is it, and does its database fit?"""
+    state = schema_state()
+    return {
+        "status": "ok" if state.status == "ok" else "error",
+        "version": __version__,
+        "schema": state.status,
+    }

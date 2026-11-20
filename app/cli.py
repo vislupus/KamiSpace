@@ -10,17 +10,7 @@ from pathlib import Path
 from app.config import BASE_DIR, get_settings
 from app.db import reset_engine, session_scope
 from app.errors import AppError
-
-
-def run_migrations() -> None:
-    from alembic import command
-    from alembic.config import Config
-
-    get_settings().ensure_directories()
-    config = Config(str(BASE_DIR / "alembic.ini"))
-    config.set_main_option("script_location", str(BASE_DIR / "migrations"))
-    command.upgrade(config, "head")
-    reset_engine()
+from app.schema import run_migrations, schema_state
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -42,9 +32,57 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_migrate(_args: argparse.Namespace) -> int:
+    settings = get_settings()
+    before = schema_state(settings)
+    print(f"Database: {settings.database_path}")
+    if before.status == "ahead":
+        print(
+            f"It is at schema revision {before.current}, which this copy of the code does not "
+            f"know (it expects {before.head}). Update the code here first.",
+            file=sys.stderr,
+        )
+        return 1
     run_migrations()
-    print("Database is up to date.")
+    after = schema_state(settings)
+    if before.current == after.current:
+        print(f"Already up to date (schema revision {after.current}).")
+    else:
+        print(f"Upgraded from schema revision {before.current or 'none'} to {after.current}.")
     return 0
+
+
+def cmd_status(_args: argparse.Namespace) -> int:
+    """Which code, which data and whether they fit: the first thing to check."""
+    import sqlite3
+
+    from app import __version__
+
+    settings = get_settings()
+    state = schema_state(settings)
+    print(f"KamiSpace {__version__}")
+    print(f"Code:      {BASE_DIR}")
+    print(f"Data:      {settings.data_dir}")
+    print(f"Database:  {settings.database_path}")
+    if not settings.database_path.is_file():
+        print("           (does not exist yet; it is created on the first start)")
+        return 0
+    notes = {
+        "ok": "matches this code",
+        "behind": f"behind: this code needs {state.head}; run `python -m app migrate`",
+        "ahead": f"newer than this code (which expects {state.head}); update the code here",
+    }
+    print(f"Schema:    {state.current or 'none'} — {notes[state.status]}")
+    connection = sqlite3.connect(settings.database_path, timeout=5)
+    try:
+        users = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        pages = connection.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
+        print(f"Contents:  {users} user(s), {pages} page(s)")
+    except sqlite3.OperationalError as error:
+        print(f"Contents:  could not be read ({error})")
+    finally:
+        connection.close()
+    print(f"Log:       {settings.logs_dir / 'kamispace.log'}")
+    return 0 if state.status == "ok" else 1
 
 
 def _read_password(args: argparse.Namespace) -> str:
@@ -131,6 +169,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Proxies trusted for X-Forwarded-* headers (default: 127.0.0.1)",
     )
     run.set_defaults(func=cmd_run)
+
+    status = commands.add_parser(
+        "status", help="Show which code and data are in use and whether they fit together"
+    )
+    status.set_defaults(func=cmd_status)
 
     migrate = commands.add_parser("migrate", help="Apply database migrations")
     migrate.set_defaults(func=cmd_migrate)

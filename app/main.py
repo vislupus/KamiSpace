@@ -19,6 +19,7 @@ from app.api import api_router
 from app.config import BASE_DIR, Settings, get_settings
 from app.deps import SAFE_METHODS
 from app.errors import AppError
+from app.schema import ensure_schema
 from app.web import router as web_router
 
 logger = logging.getLogger("kamispace")
@@ -76,6 +77,14 @@ def create_app() -> FastAPI:
     configure_logging(settings)
     # Spooled uploads and every other tempfile stay inside the project.
     tempfile.tempdir = str(settings.temp_dir)
+    # However the application is started, the database has to fit the code.
+    schema = ensure_schema(settings)
+    logger.info(
+        "KamiSpace %s starting — data: %s — schema revision: %s",
+        __version__,
+        settings.data_dir,
+        schema.current,
+    )
 
     app = FastAPI(
         title="KamiSpace",
