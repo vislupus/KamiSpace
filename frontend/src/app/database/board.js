@@ -2,7 +2,6 @@
 // of the property the view is grouped by.
 import { h } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
-import { openMenu } from '../../lib/menu.js';
 import { promptDialog } from '../../lib/modal.js';
 import { store } from '../store.js';
 import { editValue, isEmpty, newId, optionPill, personChip, renderValue, valueOf } from './values.js';
@@ -54,7 +53,13 @@ export function renderBoard(ctx) {
       const title = h('div', { class: `db-card-title${row.title ? '' : ' db-untitled'}` }, row.icon ? `${row.icon} ` : '', row.title || 'Untitled');
       const card = h(
         'div',
-        { class: 'db-card', draggable: editable, tabIndex: 0, role: 'link', dataset: { row: row.id } },
+        {
+          class: `db-card${ctx.peekedId === row.id ? ' is-peeked' : ''}`,
+          draggable: editable,
+          tabIndex: 0,
+          role: 'link',
+          dataset: { row: row.id },
+        },
         title,
         cardProperties.map((prop) => {
           const shown = renderValue(prop, valueOf(row, prop));
@@ -95,14 +100,7 @@ export function renderBoard(ctx) {
               'aria-label': 'Card options',
               onclick: (event) => {
                 event.stopPropagation();
-                openMenu({
-                  anchor: event.currentTarget,
-                  items: [
-                    { label: 'Open', icon: 'external', onSelect: () => ctx.openRow(row) },
-                    { separator: true },
-                    { label: 'Delete', icon: 'trash-2', danger: true, onSelect: () => ctx.deleteRow(row) },
-                  ],
-                });
+                ctx.rowMenu(row, event.currentTarget);
               },
             },
             icon('more', 13),
@@ -124,6 +122,10 @@ export function renderBoard(ctx) {
         if (ctx.editTitleOf === row.id) setTimeout(() => card.isConnected && rename(), 0);
       }
       card.addEventListener('click', (event) => ctx.openRow(row, event));
+      card.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        ctx.rowMenu(row, card, { at: { x: event.clientX, y: event.clientY } });
+      });
       card.addEventListener('auxclick', (event) => {
         if (event.button !== 1) return;
         event.preventDefault();

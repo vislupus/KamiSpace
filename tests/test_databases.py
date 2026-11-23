@@ -309,3 +309,111 @@ def test_schema_and_value_cleaning_units():
         "purl": "https://example.com",
         "pdone": True,
     }
+
+
+def test_status_options_have_a_stage_and_views_remember_wrapped_columns(alice):
+    database = make_database(alice)
+    status = prop(database, "Status")
+    assert [(o["name"], o["group"]) for o in status["options"]] == [
+        ("Not started", "todo"),
+        ("In progress", "in_progress"),
+        ("Done", "complete"),
+    ]
+    properties = [
+        p
+        if p["id"] != status["id"]
+        else {
+            **status,
+            "options": [
+                {**status["options"][0], "group": "complete"},
+                {"id": "onew", "name": "Blocked", "color": "red", "group": "nonsense"},
+                {"id": "oplain", "name": "Later"},
+            ],
+        }
+        for p in database["properties"]
+    ]
+    properties.append(
+        {
+            "id": "ptag",
+            "name": "Tag",
+            "type": "select",
+            "options": [
+                {"id": "a", "name": "A", "color": "red", "group": "complete"},
+            ],
+        }
+    )
+    date = prop(database, "Date")
+    views = [{**database["views"][0], "wrap": [date["id"], "ghost", date["id"]]}]
+    body = alice.patch(
+        f"/api/databases/{database['id']}", json={"properties": properties, "views": views}
+    ).json()
+    assert [(o["name"], o["group"]) for o in prop(body, "Status")["options"]] == [
+        ("Not started", "complete"),
+        ("Blocked", "todo"),
+        ("Later", "todo"),
+    ]
+    # Only a status has stages.
+    assert prop(body, "Tag")["options"] == [{"id": "a", "name": "A", "color": "red"}]
+    assert body["views"][0]["wrap"] == [date["id"]]
+
+
+def test_a_property_can_be_duplicated_with_its_values(alice, bob):
+    database = make_database(alice)
+    status = prop(database, "Status")
+    url = f"/api/databases/{database['id']}"
+    done = status["options"][2]["id"]
+    first = alice.post(f"{url}/rows", json={"title": "a", "props": {status["id"]: done}}).json()
+    alice.post(f"{url}/rows", json={"title": "b"})
+    views = [{**database["views"][0], "order": ["title", status["id"]]}]
+    alice.patch(url, json={"views": views})
+
+    response = alice.post(f"{url}/properties/{status['id']}/duplicate")
+    assert response.status_code == 201
+    body = response.json()
+    names = [p["name"] for p in body["properties"]]
+    assert names == ["Name", "Status", "Status 1", "Assignee", "Date"]
+    copy = prop(body, "Status 1")
+    assert copy["id"] != status["id"] and copy["type"] == "status"
+    assert [o["id"] for o in copy["options"]] == [o["id"] for o in status["options"]]
+    values = {r["title"]: r["props"] for r in body["rows"]}
+    assert values == {"a": {status["id"]: done, copy["id"]: done}, "b": {}}
+    assert body["views"][0]["order"] == ["title", status["id"], copy["id"]]
+    assert first["id"] in [r["id"] for r in body["rows"]]
+
+    # A second copy gets the next free name; the title cannot be copied.
+    again = alice.post(f"{url}/properties/{status['id']}/duplicate").json()
+    assert "Status 2" in [p["name"] for p in again["properties"]]
+    assert alice.post(f"{url}/properties/title/duplicate").status_code == 404
+    assert alice.post(f"{url}/properties/ghost/duplicate").status_code == 404
+    alice.put(f"/api/pages/{database['id']}/shares/{bob.user_id}", json={"role": "viewer"})
+    assert bob.post(f"{url}/properties/{status['id']}/duplicate").status_code == 403
+
+
+def test_a_status_without_a_stage_gets_one_from_its_name():
+    cleaned = sanitize_schema(
+        {
+            "properties": [
+                {"id": "title", "name": "Name", "type": "title"},
+                {
+                    "id": "ps",
+                    "name": "Status",
+                    "type": "status",
+                    "options": [
+                        {"id": "a", "name": "Not started"},
+                        {"id": "b", "name": "In progress"},
+                        {"id": "c", "name": "Done"},
+                        {"id": "d", "name": "Готово"},
+                        {"id": "e", "name": "Backlog"},
+                    ],
+                },
+            ],
+            "views": [],
+        }
+    )
+    assert [o["group"] for o in cleaned["properties"][1]["options"]] == [
+        "todo",
+        "in_progress",
+        "complete",
+        "complete",
+        "todo",
+    ]

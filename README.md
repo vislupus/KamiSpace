@@ -297,8 +297,8 @@ until the pointer is over the table; then a bar on the right adds a column and
 a bar below adds a row — click for one, drag for several (dragging back removes
 empty ones). The small handle on the top edge of a column, or the left edge of
 a row, opens a menu (insert, clear contents, delete, header row / column) and
-can be dragged to move the column or row. Drag the line between two columns to
-resize them. The cell you are writing in has a blue frame; Tab goes to the
+can be dragged to move the column or row. A right click in a cell offers the
+same actions in one menu. Drag the line between two columns to resize them. The cell you are writing in has a blue frame; Tab goes to the
 next cell, Enter to the cell below, Shift+Enter breaks the line.
 
 **Calendar** (sidebar) shows everything that has a date: rows of every
@@ -306,8 +306,12 @@ database you can open (their *Date* property, with or without a time) and
 tasks due for you — next to the official holidays of Bulgaria. Nothing is
 fetched from the internet.
 
-- Views: **Year** (all twelve months at a glance, with the list of the year's
-  holidays), **Month**, **Week** and **Day** (time grid). Weeks start on
+- Views: **Year** (all twelve months at a glance), **Month**, **Week** and
+  **Day** (time grid). The **Holidays** button lists the official holidays of
+  the year shown, when you want to see them.
+- The panel on the left has a small month to jump around in and the list of
+  *calendars*: every database with a Date property (each with its own colour),
+  your due tasks, and the holidays — tick what you want to see. Weeks start on
   Monday and carry their ISO week number; dates read DD.MM.YYYY, times use the
   24-hour clock, and "today" and "now" are those of Europe/Sofia whatever the
   time zone of the computer.
@@ -316,9 +320,14 @@ fetched from the internet.
   that follows a holiday on a Saturday or Sunday (Labour Code, art. 154).
   1 November is marked as a day without classes. The days the clocks change
   are marked in the week and day views.
-- *New event* (or a click on a day or an hour) adds a row to one of your
-  databases; drag an event to another day to move it; click it to open its
-  page. Without a database yet, the calendar offers to create an *Events* one.
+- *New event* (or a click on a day) adds a row to one of your databases. In
+  the week and day views, press and drag over the hours to create an event
+  with those times, drag an event to another time or day (steps of 15
+  minutes), and drag its lower edge to change when it ends. In the month view
+  an event of several days is one bar; drag it to another day to move it.
+- A click on an event opens its page beside the calendar (side peek); a right
+  click offers to open it as a full page or in a new tab, or to delete it.
+  Without a database yet, the calendar offers to create an *Events* one.
 - A *Date* property can include a time (*Include time* in its editor) and an
   end. Every date in the app is chosen from the same month grid.
 
@@ -328,11 +337,20 @@ page of its own with *properties* (status, person, date, number, select,
 multi-select, checkbox, URL, text).
 
 - *Table*: click a cell to edit it; **New** or *+ New page* adds a row and
-  starts typing its name; the *Open* button on a row opens it as a page. Click
-  a column header to rename the property, change its type, sort, filter, hide
-  or delete it; drag its right edge to resize, drag the header to reorder; `+`
-  adds a property. The last line can count, sum or average a column, and a
-  number can be shown as a progress bar.
+  starts typing its name. Click a column header — or right-click it — for the
+  property menu: name, *Edit property* (the options of a select or status,
+  the format of a number), *Change type*, *Filter*, *Sort*, *Group*,
+  *Calculate*, *Hide*, *Wrap content*, *Insert left / right*, *Duplicate
+  property*, *Delete property*. Drag a header's right edge to resize, the
+  header itself to reorder; `+` adds a property.
+- *Rows*: the *Open* button opens a row **beside the table** (side peek), with
+  its properties and its text; ⤢ makes it a full page, » or Esc closes it. A
+  right click on a row (or a card) offers *Open in side peek / as a full page
+  / in a new tab*, *Copy link*, *Duplicate* and *Delete*.
+- *Options* of a select, multi-select or status are edited as in Notion: each
+  has a name, a colour (picked from swatches) and can be reordered by
+  dragging. A status also has a stage — *To-do*, *In progress* or *Complete*
+  — and its picker lists the options stage by stage.
 - *Board*: one column per status (or person, or any select property — *Group
   by* in the view menu). Drag cards between columns and up and down; *+ New
   page* adds a card to that column; *Add a group* adds a status.
@@ -489,7 +507,7 @@ against the time zone database:
 cd frontend && npm run test:unit
 ```
 
-Browser tests (Playwright, 180+ tests: calendar, tables, keyboard and new-tab
+Browser tests (Playwright, 185+ tests: right-click and property menus, side peek, calendar, tables, keyboard and new-tab
 habits, databases and boards, tasks, Markdown shortcuts, slash commands,
 block drag-and-drop (also into toggles), pictures, toolbar, links, uploads,
 autosave, conflicts, responsive
@@ -580,13 +598,13 @@ automated tests.
 |---|---|
 | Block handles | A table is one block; its rows and columns have their own handles. A column layout cannot be dropped inside another column |
 | Tables | Cells cannot be merged from the interface. A selected block is one block: Shift+↑/↓ does not extend the selection to several blocks (select text across them with the mouse or Shift+arrows instead) |
-| Calendar | Holidays follow the Labour Code as in force since 2017 (earlier years are shown without days in lieu); extra days off declared by the government for a single year, and school holidays, are not included. Times are clock times in Europe/Sofia — the zone is fixed, not a setting. Events are moved by whole days (drag); their time is changed in the date editor. Recurring events and reminders do not exist |
+| Calendar | Holidays follow the Labour Code as in force since 2017 (earlier years are shown without days in lieu); extra days off declared by the government for a single year, and school holidays, are not included. Times are clock times in Europe/Sofia — the zone is fixed, not a setting. An event that runs past midnight is drawn as a bar in the all-day row, not in the time grid. Recurring events and reminders do not exist |
 | Paste from Word | Pictures are recovered from the clipboard's RTF data, which is how Word provides them; tested with clipboard data in Word's format, not with every Word version. Pictures that cannot be recovered are left out with a notice |
 | Embeds | Many sites refuse to be shown inside another page; for those the frame stays empty and the link below it opens the site. Only `https` pages can be embedded |
 | Web bookmarks | Title and description are fetched by the server, which therefore needs outbound internet access (and no proxy in between). Without it the card shows the address |
 | Markdown export | Pictures and files are referenced, not bundled, so a `.md` file imports with its pictures only on the same KamiSpace instance. Text colours, assignees and due dates are not written to Markdown |
 | Tasks | The assignee is not notified (nothing is emailed); they see the task in "My tasks". Rows of a database that have a person are not listed there — "My tasks" covers to-do items |
-| Databases | No relations between databases, roll-ups or formulas; views are table and board (no timeline or gallery; the Calendar shows the dated rows of all databases together). Property values are not part of version history and are not searched (row names and page text are). Deleting the database block from a page leaves the database as a sub-page; delete that page to remove it. Two people editing the same database see each other's changes after reloading |
+| Databases | The side peek is not part of the address: reloading the browser closes it. No relations between databases, roll-ups or formulas; views are table and board (no timeline or gallery; the Calendar shows the dated rows of all databases together). Property values are not part of version history and are not searched (row names and page text are). Deleting the database block from a page leaves the database as a sub-page; delete that page to remove it. Two people editing the same database see each other's changes after reloading |
 | Images | Width is kept as a percentage of the text column (10–100 %). Pictures cannot be cropped, and text does not wrap around them |
 | Links | Clicking a link opens it (as in Notion); to change its text, edit around it or use *Edit link* on the hover card. The hover card needs a pointer |
 | Touch devices | Reading and typing work and the layout adapts, but block handles and drag-and-drop need a pointer |

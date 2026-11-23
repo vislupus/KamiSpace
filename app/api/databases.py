@@ -43,6 +43,13 @@ def update_database(
     return databases.detail(db, access, page)
 
 
+@router.post("/{page_id}/properties/{prop_id}/duplicate", status_code=201)
+def duplicate_property(page_id: int, prop_id: str, access: UserAccess, db: Db) -> dict[str, Any]:
+    page = databases.duplicate_property(db, access, page_id, prop_id)
+    db.commit()
+    return databases.detail(db, access, page)
+
+
 @router.post("/{page_id}/rows", status_code=201)
 def create_row(page_id: int, body: RowCreateIn, access: UserAccess, db: Db) -> dict[str, Any]:
     row = databases.create_row(

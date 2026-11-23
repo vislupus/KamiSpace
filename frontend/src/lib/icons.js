@@ -1,6 +1,6 @@
 // Lucide icons, imported individually so only the ones in use are bundled.
 import {
-  AlignCenter, AlignLeft, AppWindow, Archive, ArrowUpDown, CircleChevronDown, CircleDashed,
+  AlignCenter, AlignLeft, Flag, ArrowLeftToLine, ArrowRightToLine, ChevronsRight, PanelRight, SlidersHorizontal, Sigma as SigmaIcon, WrapText, AppWindow, Archive, ArrowUpDown, CircleChevronDown, CircleDashed,
   EyeOff, Hash, ListFilter, SquareCheck, SquareKanban, ArrowDown, ArrowUp, AtSign, AudioLines, Baseline, Bookmark, Calendar,
   Captions, CircleCheckBig, ClipboardCopy, Columns2, FileDown, FileUp, Globe, Highlighter, Library,
   ListCollapse, LockOpen, MoveVertical, Sigma, Video, BetweenHorizontalStart, BetweenVerticalStart, Bold, Building2,
@@ -15,7 +15,9 @@ import {
 } from 'lucide';
 
 const ICONS = {
-  align: AlignCenter, caption: Captions, embed: AppWindow,
+  align: AlignCenter, caption: Captions, flag: Flag, 'insert-left': ArrowLeftToLine,
+  'insert-right': ArrowRightToLine, 'chevrons-right': ChevronsRight, peek: PanelRight, sliders: SlidersHorizontal,
+  sum: SigmaIcon, wrap: WrapText, embed: AppWindow,
   'align-left': AlignLeft, sort: ArrowUpDown, select: CircleChevronDown, status: CircleDashed,
   'eye-off': EyeOff, hash: Hash, filter: ListFilter, checkbox: SquareCheck, kanban: SquareKanban, archive: Archive, 'arrow-down': ArrowDown, 'arrow-up': ArrowUp, at: AtSign,
   audio: AudioLines, 'text-color': Baseline, bookmark: Bookmark, calendar: Calendar,

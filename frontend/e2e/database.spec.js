@@ -155,8 +155,10 @@ test.describe('Table view', () => {
     await expect(number(0)).toHaveText('80');
 
     await page.locator('.db-th', { hasText: 'Completion' }).click();
-    await page.locator('.db-property-menu .menu-item', { hasText: 'Show as' }).click();
-    await page.getByRole('menuitem', { name: 'Progress bar' }).click();
+    await page.locator('.db-property-menu .menu-item', { hasText: 'Edit property' }).click();
+    await page.locator('.db-property-edit .menu-item', { hasText: 'Progress bar' }).click();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
     await expect(number(0).locator('.db-progress-fill')).toHaveAttribute('style', /width: 80%/);
 
     await page.locator('.db-calc').hover();
@@ -180,7 +182,8 @@ test.describe('Table view', () => {
     await expectRows(page, ['Banana', 'Apple', 'Cherry']);
 
     await page.locator('.db-th', { hasText: 'Name' }).click();
-    await page.locator('.db-property-menu .menu-item', { hasText: 'Sort ascending' }).click();
+    await page.locator('.db-property-menu .menu-item', { hasText: 'Sort' }).click();
+    await page.getByRole('menuitem', { name: 'Ascending' }).click();
     await expectRows(page, ['Apple', 'Banana', 'Cherry']);
     await expect(page.locator('[data-control="sort"]')).toHaveText('Sort · 1');
 
@@ -203,7 +206,7 @@ test.describe('Table view', () => {
     await expectRows(page, ['Banana', 'Cherry', 'Damson']);
 
     await page.locator('.db-th', { hasText: 'Date' }).click();
-    await page.locator('.db-property-menu .menu-item', { hasText: 'Hide in this view' }).click();
+    await page.locator('.db-property-menu .menu-item', { hasText: 'Hide' }).click();
     await expect(page.locator('.db-th-name')).toHaveText(['Name', 'Status', 'Assignee']);
 
     // Filters, sorts and hidden properties belong to the view and are saved.
@@ -218,22 +221,25 @@ test.describe('Table view', () => {
     await expect(page.locator('.db-th-name')).toHaveText(['Name', 'Status', 'Assignee']);
   });
 
-  test('rows open as pages that show their properties; a row can be deleted and brought back', async ({ page }) => {
+  test('a row opens beside the table with its properties; it can be deleted and brought back', async ({ page }) => {
     const database = await makeDatabase(page, { rows: [['Write the spec', 'Not started'], ['Ship it', 'Done']] });
     await page.goto(`/p/${database.id}`);
     const first = page.locator('.db-row[data-row]').first();
     await first.hover();
     await first.locator('.db-open-row').click();
-    await expect(page).toHaveURL(new RegExp(`/p/${database.rows[0].id}$`));
-    await expect(page.locator('.page-title')).toHaveValue('Write the spec');
-    await expect(page.locator('.breadcrumbs')).toContainText(database.title);
-    const props = page.locator('.row-props');
+    // Side peek: the database stays where it is, the row is marked in it.
+    const peek = page.locator('.peek');
+    await expect(peek.locator('.page-title')).toHaveValue('Write the spec');
+    await expect(page).toHaveURL(new RegExp(`/p/${database.id}$`));
+    await expect(first).toHaveClass(/is-peeked/);
+    await expect(page.locator('.db-table')).toBeVisible();
+    const props = peek.locator('.row-props');
     await expect(props.locator('.row-prop-name')).toHaveText(['Status', 'Assignee', 'Date']);
     await expect(props.locator('.row-prop-value').first().locator('.db-pill')).toHaveText('Not started');
     // The row is a normal page: it has text of its own.
-    await focusEditor(page);
+    await peek.locator('.doc').click();
     await page.keyboard.type('Details of the spec');
-    await waitForSaved(page);
+    await expect(peek.locator('.save-state')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
     // Its properties can be changed right here.
     await props.locator('.row-prop-value').first().click();
     await page.locator('.db-option', { hasText: 'Done' }).click();
@@ -242,12 +248,36 @@ test.describe('Table view', () => {
       .poll(async () => (await getDatabase(page, database.id)).rows[0].props[database.status.id])
       .toBe(database.status.options.find((option) => option.name === 'Done').id);
 
+    // The table follows what was changed in the panel.
+    await expect(first.locator('.db-cell[data-type="status"] .db-pill')).toHaveText('Done');
+    // Renaming in the panel renames the row.
+    await peek.locator('.page-title').fill('Write the final spec');
+    await expect(first.locator('.db-cell-title .db-text')).toHaveText('Write the final spec');
+    // A new property can be added from the panel as well.
+    await peek.getByRole('button', { name: 'Add a property' }).click();
+    await page.getByRole('menuitem', { name: 'Checkbox' }).click();
+    await expect(props.locator('.row-prop-name')).toHaveText(['Status', 'Assignee', 'Date', 'Checkbox']);
+    await expect(page.locator('.db-th-name')).toHaveText(['Name', 'Status', 'Assignee', 'Date', 'Checkbox']);
+    // "Open as a full page" leaves the peek for the page itself.
+    await page.getByRole('button', { name: 'Open as a full page' }).click();
+    await expect(page).toHaveURL(new RegExp(`/p/${database.rows[0].id}$`));
+    await expect(page.locator('.peek')).toHaveCount(0);
+    await expect(page.locator('.breadcrumbs')).toContainText(database.title);
+    await expect(page.locator('.doc')).toContainText('Details of the spec');
+
     await page.goBack();
     await expect(page.locator('.db-row[data-row]')).toHaveCount(2);
+    // Esc closes the panel.
+    await first.hover();
+    await first.locator('.db-open-row').click();
+    await expect(peek).toBeVisible();
+    await page.locator('.topbar').first().click({ position: { x: 300, y: 10 } });
+    await page.keyboard.press('Escape');
+    await expect(peek).toHaveCount(0);
     const row = page.locator('.db-row[data-row]', { hasText: 'Ship it' });
     await row.hover();
     await row.locator('.db-row-handle').click();
-    await page.getByRole('menuitem', { name: 'Delete' }).click();
+    await page.getByRole('menuitem', { name: /^Delete/ }).click();
     await expect(page.locator('.db-row[data-row]')).toHaveCount(1);
     await page.locator('.toast-action', { hasText: 'Undo' }).click();
     await expect(page.locator('.db-row[data-row]')).toHaveCount(2);
@@ -290,9 +320,10 @@ test.describe('Board view', () => {
     await page.keyboard.press('Enter');
     await expect(page.locator('.db-column-head')).toContainText(['No Status', 'Not started', 'In progress', 'Done', 'Blocked']);
 
-    // Clicking a card opens its page.
+    // Clicking a card opens its page beside the board.
     await column('Done').locator('.db-card').click();
-    await expect(page.locator('.page-title')).toHaveValue('Design');
+    await expect(page.locator('.peek .page-title')).toHaveValue('Design');
+    await expect(column('Done').locator('.db-card')).toHaveClass(/is-peeked/);
   });
 
   test('group by person: a board of who does what', async ({ page }) => {
@@ -332,7 +363,8 @@ test('someone who can only view a database sees it without the editing controls'
   await expect(bobPage.locator('.db-option-editor')).toHaveCount(0);
   // The name still leads to the page of the row.
   await bobPage.locator('.db-cell-title').click();
-  await expect(bobPage.locator('.page-title')).toHaveValue('Read me');
-  await expect(bobPage.locator('.row-prop-value.is-editable')).toHaveCount(0);
+  await expect(bobPage.locator('.peek .page-title')).toHaveValue('Read me');
+  await expect(bobPage.locator('.peek .row-prop-value')).toHaveCount(3);
+  await expect(bobPage.locator('.row-prop-value.is-editable, .row-prop-add')).toHaveCount(0);
   await context.close();
 });

@@ -10,20 +10,22 @@ import { confirmDialog, promptDialog } from '../../lib/modal.js';
 import { openPopover } from '../../lib/popover.js';
 import { toast, toastError } from '../../lib/toast.js';
 import { debounce, storageGet, storageSet } from '../../lib/util.js';
-import { openPage } from '../actions.js';
+import { copyPageLink, openPage, wantsNewTab } from '../actions.js';
+import { openPeek, peekedPageId } from '../peek.js';
 import { pagePath } from '../router.js';
-import { patchPage, refreshTree, store } from '../store.js';
+import { on, patchPage, refreshTree, store } from '../store.js';
 import { renderBoard } from './board.js';
 import { renderTable } from './table.js';
 import {
   ADDABLE_TYPES,
-  NUMBER_FORMATS,
+  CALCULATIONS,
   TYPES,
   compareRows,
   filterOps,
   hasOptions,
   matchesFilter,
   newId,
+  openPropertyEditor,
   textOf,
   valueOf,
 } from './values.js';
@@ -293,39 +295,78 @@ export function mountDatabase({ container, databaseId, inline = false }) {
 
   // -- property menus ---------------------------------------------------------------
 
-  function addProperty(anchor) {
+  function chooseType(anchor, onPick, placement = 'bottom-end') {
     openMenu({
       anchor,
-      placement: 'bottom-end',
+      placement,
       items: [
         { heading: 'New property' },
         ...ADDABLE_TYPES.map((type) => ({
           label: TYPES[type].label,
           icon: TYPES[type].icon,
-          onSelect: () => {
-            const used = new Set(db.properties.map((prop) => prop.name));
-            let name = TYPES[type].label;
-            for (let n = 2; used.has(name); n += 1) name = `${TYPES[type].label} ${n}`;
-            const prop = { id: newId('p'), name, type };
-            if (hasOptions(prop)) prop.options = [];
-            if (type === 'number') prop.format = 'number';
-            saveProperties([...db.properties, prop]);
-            const cell = root.querySelector(`[data-header="${prop.id}"]`);
-            if (cell) propertyMenu(prop, cell, { rename: true });
-          },
+          onSelect: () => onPick(type),
         })),
       ],
     });
   }
 
-  function propertyMenu(prop, anchor, { rename = false } = {}) {
+  function newProperty(type) {
+    const used = new Set(db.properties.map((prop) => prop.name));
+    let name = TYPES[type].label;
+    for (let n = 2; used.has(name); n += 1) name = `${TYPES[type].label} ${n}`;
+    const prop = { id: newId('p'), name, type };
+    if (hasOptions(prop)) {
+      prop.options =
+        type === 'status'
+          ? [
+              { id: newId('o'), name: 'Not started', color: 'gray', group: 'todo' },
+              { id: newId('o'), name: 'In progress', color: 'blue', group: 'in_progress' },
+              { id: newId('o'), name: 'Done', color: 'green', group: 'complete' },
+            ]
+          : [];
+    }
+    if (type === 'number') prop.format = 'number';
+    return prop;
+  }
+
+  /** Add a property at the end, or next to another one (`beside`, `side`). */
+  function addProperty(anchor, { beside = null, side = 'right' } = {}) {
+    chooseType(anchor, (type) => {
+      const prop = newProperty(type);
+      if (beside) {
+        const view = currentView();
+        const order = orderedProperties(view).map((item) => item.id);
+        order.splice(order.indexOf(beside.id) + (side === 'left' ? 0 : 1), 0, prop.id);
+        view.order = order;
+      }
+      saveProperties([...db.properties, prop]);
+      const cell = root.querySelector(`[data-header="${prop.id}"]`);
+      if (cell) propertyMenu(prop, cell, { rename: true });
+    });
+  }
+
+  async function duplicateProperty(prop) {
+    try {
+      await schemaSaves;
+      const result = await api.post(`${url}/properties/${prop.id}/duplicate`);
+      if (destroyed) return;
+      db = result;
+      render();
+    } catch (error) {
+      toastError(error, 'Could not duplicate the property');
+    }
+  }
+
+  /** The menu of a property (a column of the table), laid out as in Notion. */
+  function propertyMenu(prop, anchor, { rename = false, at = null } = {}) {
     const view = currentView();
     const isTitle = prop.type === 'title';
+    const latest = () => property(prop.id) ?? prop;
     const name = h('input', { class: 'input', type: 'text', value: prop.name, 'aria-label': 'Property name', maxLength: 100 });
     const commitName = () => {
       const next = name.value.trim();
-      const latest = property(prop.id);
-      if (next && latest && next !== latest.name) saveProperty({ ...latest, name: next });
+      const current = property(prop.id);
+      if (next && current && next !== current.name) saveProperty({ ...current, name: next });
     };
     name.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -333,13 +374,14 @@ export function mountDatabase({ container, databaseId, inline = false }) {
         popover.close();
       }
     });
-    const row = (label, iconName, onClick, { danger = false, hint = null, keep = false } = {}) => {
+    const row = (label, iconName, onClick, { danger = false, hint = null, keep = false, more = false } = {}) => {
       const el = h(
         'div',
         { class: `menu-item${danger ? ' is-danger' : ''}`, role: 'menuitem', tabIndex: -1 },
         icon(iconName, 16),
         h('span', { class: 'menu-label' }, label),
         hint ? h('span', { class: 'menu-hint' }, hint) : null,
+        more ? icon('chevron-right', 14) : null,
       );
       el.addEventListener('click', () => {
         if (!keep) popover.close();
@@ -347,89 +389,151 @@ export function mountDatabase({ container, databaseId, inline = false }) {
       });
       return el;
     };
-    const setSort = (direction) => changeView({ sort: [{ property: prop.id, direction }] }, { full: true });
+    const submenu = (el, items) => openMenu({ anchor: el, placement: 'right-start', items });
+    const separator = () => h('div', { class: 'menu-separator' });
+    const wrapped = (view.wrap ?? []).includes(prop.id);
+    const calc = view.calc ?? {};
+    const sorted = (view.sort ?? []).find((rule) => rule.property === prop.id)?.direction;
+
     const content = h(
       'div',
       { class: 'menu db-property-menu' },
-      h('div', { class: 'db-property-name' }, name),
+      h(
+        'div',
+        { class: 'db-property-name' },
+        h('span', { class: 'db-property-type', title: TYPES[prop.type].label }, icon(TYPES[prop.type].icon, 16)),
+        name,
+      ),
+      hasOptions(prop) || prop.type === 'number'
+        ? row(
+            'Edit property',
+            'sliders',
+            (el) => openPropertyEditor(latest(), el, { onProperty: saveProperty }),
+            { keep: true, more: true },
+          )
+        : null,
       isTitle
         ? null
         : row(
-            'Type',
-            TYPES[prop.type].icon,
+            'Change type',
+            'refresh',
             (el) =>
-              openMenu({
-                anchor: el,
-                placement: 'right-start',
-                items: ADDABLE_TYPES.map((type) => ({
+              submenu(
+                el,
+                ADDABLE_TYPES.map((type) => ({
                   label: TYPES[type].label,
                   icon: TYPES[type].icon,
-                  checked: type === prop.type,
+                  checked: type === latest().type,
                   onSelect: () => {
                     popover.close();
-                    if (type === prop.type) return;
-                    const latest = property(prop.id);
-                    const next = { id: latest.id, name: latest.name, type };
-                    if (hasOptions(next)) next.options = latest.options ?? [];
+                    const current = latest();
+                    if (type === current.type) return;
+                    const next = { id: current.id, name: current.name, type };
+                    if (hasOptions(next)) next.options = current.options ?? newProperty(type).options;
                     if (type === 'number') next.format = 'number';
                     saveProperty(next);
                   },
                 })),
-              }),
-            { hint: TYPES[prop.type].label, keep: true },
+              ),
+            { hint: TYPES[prop.type].label, keep: true, more: true },
           ),
-      prop.type === 'number'
-        ? row(
-            'Show as',
-            'hash',
-            (el) =>
-              openMenu({
-                anchor: el,
-                placement: 'right-start',
-                items: NUMBER_FORMATS.map(([format, label]) => ({
-                  label,
-                  checked: (prop.format ?? 'number') === format,
-                  onSelect: () => {
-                    popover.close();
-                    saveProperty({ ...property(prop.id), format });
-                  },
-                })),
-              }),
-            { hint: NUMBER_FORMATS.find(([format]) => format === (prop.format ?? 'number'))[1], keep: true },
-          )
-        : null,
-      h('div', { class: 'menu-separator' }),
-      row('Sort ascending', 'arrow-up', () => setSort('asc')),
-      row('Sort descending', 'arrow-down', () => setSort('desc')),
+      separator(),
       row('Filter', 'filter', () => {
         const [op] = filterOps(prop)[0];
         changeView({ filter: [...(view.filter ?? []), { property: prop.id, op, value: null }] }, { full: true });
         openFilters(toolbar.querySelector('[data-control="filter"]'));
       }),
-      isTitle
-        ? null
-        : row('Hide in this view', 'eye-off', () =>
-            changeView({ hidden: [...new Set([...(view.hidden ?? []), prop.id])] }, { full: true }),
-          ),
-      isTitle
-        ? null
-        : row(
-            'Delete property',
-            'trash-2',
-            async () => {
-              const sure = await confirmDialog({
-                title: `Delete “${prop.name}”?`,
-                message: 'The property and its values are removed from every row.',
-                confirmLabel: 'Delete',
-                danger: true,
-              });
-              if (sure) saveProperties(db.properties.filter((item) => item.id !== prop.id));
+      row(
+        'Sort',
+        'sort',
+        (el) =>
+          submenu(el, [
+            {
+              label: 'Ascending',
+              icon: 'arrow-up',
+              checked: sorted === 'asc',
+              onSelect: () => {
+                popover.close();
+                changeView({ sort: [{ property: prop.id, direction: 'asc' }] }, { full: true });
+              },
             },
-            { danger: true },
-          ),
+            {
+              label: 'Descending',
+              icon: 'arrow-down',
+              checked: sorted === 'desc',
+              onSelect: () => {
+                popover.close();
+                changeView({ sort: [{ property: prop.id, direction: 'desc' }] }, { full: true });
+              },
+            },
+            sorted
+              ? {
+                  label: 'Remove sort',
+                  icon: 'x',
+                  onSelect: () => {
+                    popover.close();
+                    changeView({ sort: view.sort.filter((rule) => rule.property !== prop.id) }, { full: true });
+                  },
+                }
+              : null,
+          ]),
+        { keep: true, more: true },
+      ),
+      GROUPABLE.has(prop.type)
+        ? row('Group', 'rows', () => {
+            // Grouping is what a board does: this view becomes one, grouped by the property.
+            changeView({ type: 'board', groupBy: prop.id }, { full: true });
+          }, { hint: view.type === 'board' && view.groupBy === prop.id ? 'Grouped' : 'As a board' })
+        : null,
+      view.type === 'table'
+        ? row(
+            'Calculate',
+            'sum',
+            (el) =>
+              submenu(el, [
+                { label: 'None', checked: !calc[prop.id], onSelect: () => { popover.close(); changeView({ calc: { ...calc, [prop.id]: undefined } }); } },
+                ...CALCULATIONS.map(([key, label]) => ({
+                  label,
+                  checked: calc[prop.id] === key,
+                  onSelect: () => {
+                    popover.close();
+                    changeView({ calc: { ...calc, [prop.id]: key } });
+                  },
+                })),
+              ]),
+            { keep: true, more: true },
+          )
+        : null,
+      isTitle
+        ? null
+        : row('Hide', 'eye-off', () => changeView({ hidden: [...new Set([...(view.hidden ?? []), prop.id])] }, { full: true })),
+      view.type === 'table'
+        ? row(wrapped ? 'Unwrap content' : 'Wrap content', 'wrap', () => {
+            const wrap = new Set(view.wrap ?? []);
+            if (wrapped) wrap.delete(prop.id);
+            else wrap.add(prop.id);
+            changeView({ wrap: [...wrap] });
+          })
+        : null,
+      separator(),
+      isTitle ? null : row('Insert left', 'insert-left', () => addProperty(anchor, { beside: prop, side: 'left' })),
+      row('Insert right', 'insert-right', () => addProperty(anchor, { beside: prop, side: 'right' })),
+      isTitle ? null : row('Duplicate property', 'copy', () => duplicateProperty(prop)),
+      isTitle
+        ? null
+        : row('Delete property', 'trash-2', async () => {
+            const sure = await confirmDialog({
+              title: `Delete “${latest().name}”?`,
+              message: 'The property and its values are removed from every row.',
+              confirmLabel: 'Delete',
+              danger: true,
+            });
+            if (sure) saveProperties(db.properties.filter((item) => item.id !== prop.id));
+          }),
     );
     const popover = openPopover({
-      anchor,
+      // A right click opens the menu where the pointer is.
+      anchor: at ? () => new DOMRect(at.x, at.y, 0, 0) : anchor,
       placement: 'bottom-start',
       offset: 2,
       className: 'menu-popover',
@@ -441,6 +545,37 @@ export function mountDatabase({ container, databaseId, inline = false }) {
       name.focus();
       name.select();
     }
+  }
+
+  // -- rows -------------------------------------------------------------------------
+
+  async function duplicateRow(row) {
+    try {
+      await api.post(`/api/pages/${row.id}/duplicate`);
+      await load();
+      refreshTree();
+    } catch (error) {
+      toastError(error, 'Could not duplicate the row');
+    }
+  }
+
+  /** What can be done with a row: the handle's menu and the right-click menu. */
+  function rowMenu(row, anchor, { at = null } = {}) {
+    const editable = db.can_edit && row.can_edit;
+    openMenu({
+      anchor: at ? () => new DOMRect(at.x, at.y, 0, 0) : anchor,
+      items: [
+        { label: 'Open in side peek', icon: 'peek', onSelect: () => openPeek(row.id) },
+        { label: 'Open as a full page', icon: 'maximize', onSelect: () => openPage(row.id) },
+        { label: 'Open in a new tab', icon: 'external', onSelect: () => window.open(pagePath(row.id), '_blank', 'noopener') },
+        { separator: true },
+        { label: 'Copy link', icon: 'link', onSelect: () => copyPageLink(row.id) },
+        editable ? { label: 'Duplicate', icon: 'copy', onSelect: () => duplicateRow(row) } : null,
+        editable ? { label: 'Add a row below', icon: 'plus', onSelect: () => addRow({ afterId: row.id }) } : null,
+        editable ? { separator: true } : null,
+        editable ? { label: 'Delete', icon: 'trash-2', danger: true, hint: 'Del', onSelect: () => deleteRow(row) } : null,
+      ],
+    });
   }
 
   // -- view menus -------------------------------------------------------------------
@@ -903,7 +1038,11 @@ export function mountDatabase({ container, databaseId, inline = false }) {
       changeView,
       propertyMenu,
       addProperty,
-      openRow: (row, event) => openPage(row.id, event),
+      // A row opens beside the database, as in Notion; Ctrl+click and the
+      // middle button open it in a new tab.
+      openRow: (row, event) => (wantsNewTab(event) ? openPage(row.id, event) : openPeek(row.id)),
+      rowMenu,
+      peekedId: peekedPageId(),
     };
     replace(body, view.type === 'board' ? renderBoard(context) : renderTable(context));
     const next = body.querySelector('.db-scroll');
@@ -943,11 +1082,28 @@ export function mountDatabase({ container, databaseId, inline = false }) {
   }
 
   load();
+  // A row changed somewhere else (in the side peek, on its own page): follow.
+  const reload = debounce(() => {
+    if (!destroyed && db) load();
+  }, 250);
+  const subscriptions = [
+    on('row-updated', ({ databaseId: changed }) => {
+      if (changed === databaseId) reload();
+    }),
+    on('peek', ({ closed }) => {
+      if (!db || destroyed) return;
+      renderBody();
+      // What was written or deleted in the panel shows up when it closes.
+      if (closed) reload();
+    }),
+  ];
   return {
     reload: load,
     destroy() {
       pushViews.flush();
       saveTitle.flush();
+      reload.cancel();
+      for (const unsubscribe of subscriptions) unsubscribe();
       destroyed = true;
     },
   };

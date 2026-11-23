@@ -220,8 +220,264 @@ function editInline(prop, value, anchor, onChange) {
   input.select?.();
 }
 
+/** The stages of a status, in the order they are shown. */
+export const STATUS_GROUPS = [
+  ['todo', 'To-do'],
+  ['in_progress', 'In progress'],
+  ['complete', 'Complete'],
+];
+
+/**
+ * The small editor of one option, as in Notion: its name, Delete, the stage
+ * (for a status) and the colours with a swatch each.
+ * onChange(changes) is called for every edit; onDelete() removes the option.
+ */
+export function openOptionEditor(option, anchor, { status = false, onChange, onDelete, placement = 'right-start' }) {
+  let current = { ...option };
+  const name = h('input', { class: 'input', type: 'text', value: current.name, 'aria-label': 'Option name', maxLength: 100 });
+  const commitName = () => {
+    const next = name.value.trim();
+    if (next && next !== current.name) {
+      current.name = next;
+      onChange({ name: next });
+    }
+  };
+  name.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      popover.close();
+    }
+  });
+  const list = h('div', { class: 'db-option-colors' });
+  const draw = () => {
+    list.replaceChildren(
+      ...(status
+        ? [
+            h('div', { class: 'menu-heading' }, 'Stage'),
+            ...STATUS_GROUPS.map(([group, label]) =>
+              h(
+                'div',
+                {
+                  class: 'menu-item',
+                  role: 'menuitemradio',
+                  'aria-checked': String((current.group ?? 'todo') === group),
+                  onclick: () => {
+                    current.group = group;
+                    onChange({ group });
+                    draw();
+                  },
+                },
+                h('span', { class: 'menu-label' }, label),
+                (current.group ?? 'todo') === group ? icon('check', 15) : null,
+              ),
+            ),
+          ]
+        : []),
+      h('div', { class: 'menu-heading' }, 'Colors'),
+      ...COLORS.map((color) =>
+        h(
+          'div',
+          {
+            class: 'menu-item',
+            role: 'menuitemradio',
+            'aria-checked': String(current.color === color),
+            onclick: () => {
+              current.color = color;
+              onChange({ color });
+              draw();
+            },
+          },
+          h('span', { class: 'db-swatch', dataset: { color } }),
+          h('span', { class: 'menu-label' }, color[0].toUpperCase() + color.slice(1)),
+          current.color === color ? icon('check', 15) : null,
+        ),
+      ),
+    );
+  };
+  draw();
+  const remove = h(
+    'div',
+    {
+      class: 'menu-item',
+      role: 'menuitem',
+      onclick: () => {
+        current = null;
+        popover.close();
+        onDelete();
+      },
+    },
+    icon('trash-2', 16),
+    h('span', { class: 'menu-label' }, 'Delete'),
+  );
+  const popover = openPopover({
+    anchor,
+    placement,
+    offset: 4,
+    className: 'menu-popover',
+    content: h('div', { class: 'menu db-option-edit' }, h('div', { class: 'db-property-name' }, name), remove, h('div', { class: 'menu-separator' }), list),
+    restoreFocus: false,
+    onClose: () => {
+      if (current) commitName();
+    },
+  });
+  name.focus();
+  name.select();
+  return popover;
+}
+
+/**
+ * "Edit property": the options of a select / multi-select / status (add,
+ * reorder by dragging, rename, recolour, delete) or the format of a number.
+ */
+export function openPropertyEditor(prop, anchor, { onProperty, placement = 'right-start' }) {
+  let current = { ...prop, options: [...(prop.options ?? [])] };
+  const body = h('div', { class: 'menu db-property-edit' });
+  const save = () => onProperty({ ...current });
+  const status = current.type === 'status';
+  let dragged = null;
+
+  const optionRow = (option) => {
+    const row = h(
+      'div',
+      { class: 'menu-item db-option-row', draggable: true, dataset: { option: option.id } },
+      h('span', { class: 'db-option-grip', 'aria-hidden': 'true' }, icon('grip', 13)),
+      h('span', { class: 'menu-label' }, optionPill(option, { status })),
+      icon('chevron-right', 14),
+    );
+    row.addEventListener('click', () =>
+      openOptionEditor(option, row, {
+        status,
+        onChange: (changes) => {
+          current.options = current.options.map((item) => (item.id === option.id ? { ...item, ...changes } : item));
+          save();
+          draw();
+        },
+        onDelete: () => {
+          current.options = current.options.filter((item) => item.id !== option.id);
+          save();
+          draw();
+        },
+      }),
+    );
+    row.addEventListener('dragstart', (event) => {
+      dragged = option.id;
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', option.name);
+    });
+    row.addEventListener('dragover', (event) => {
+      if (!dragged || dragged === option.id) return;
+      event.preventDefault();
+      const rect = row.getBoundingClientRect();
+      row.dataset.drop = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    });
+    row.addEventListener('dragleave', () => delete row.dataset.drop);
+    row.addEventListener('drop', (event) => {
+      event.preventDefault();
+      const before = row.dataset.drop === 'before';
+      delete row.dataset.drop;
+      const moved = current.options.find((item) => item.id === dragged);
+      dragged = null;
+      if (!moved || moved.id === option.id) return;
+      const rest = current.options.filter((item) => item.id !== moved.id);
+      // Dropped among the options of another stage, a status changes stage.
+      const placed = status ? { ...moved, group: option.group ?? 'todo' } : moved;
+      rest.splice(rest.findIndex((item) => item.id === option.id) + (before ? 0 : 1), 0, placed);
+      current.options = rest;
+      save();
+      draw();
+    });
+    return row;
+  };
+
+  const addOption = (group = null) => {
+    const input = h('input', { class: 'input', type: 'text', placeholder: 'Type a name and press Enter', 'aria-label': 'New option', maxLength: 100 });
+    let done = false;
+    const finish = () => {
+      // Enter redraws the list, which blurs the field: only the first call counts.
+      if (done) return;
+      done = true;
+      const text = input.value.trim();
+      if (text) {
+        current.options = [...current.options, { id: newId('o'), name: text, color: nextColor(current.options), ...(status ? { group: group ?? 'todo' } : {}) }];
+        save();
+      }
+      draw();
+    };
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        finish();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        done = true;
+        draw();
+      }
+    });
+    input.addEventListener('blur', finish);
+    return input;
+  };
+
+  function section(title, options, group = null) {
+    const holder = h('div', { class: 'db-property-name', hidden: true });
+    const add = h(
+      'button',
+      {
+        class: 'icon-button',
+        type: 'button',
+        title: 'Add an option',
+        'aria-label': group ? `Add an option to ${title}` : 'Add an option',
+        onclick: () => {
+          const input = addOption(group);
+          holder.replaceChildren(input);
+          holder.hidden = false;
+          input.focus();
+        },
+      },
+      icon('plus', 15),
+    );
+    return [h('div', { class: 'menu-heading db-options-head' }, h('span', null, title), add), holder, ...options.map(optionRow)];
+  }
+
+  function draw() {
+    if (current.type === 'number') {
+      body.replaceChildren(
+        h('div', { class: 'menu-heading' }, 'Show as'),
+        ...NUMBER_FORMATS.map(([format, label]) =>
+          h(
+            'div',
+            {
+              class: 'menu-item',
+              role: 'menuitemradio',
+              onclick: () => {
+                current.format = format;
+                save();
+                draw();
+              },
+            },
+            h('span', { class: 'menu-label' }, label),
+            (current.format ?? 'number') === format ? icon('check', 15) : null,
+          ),
+        ),
+      );
+      return;
+    }
+    body.replaceChildren(
+      ...(status
+        ? STATUS_GROUPS.flatMap(([group, label]) =>
+            section(label, current.options.filter((option) => (option.group ?? 'todo') === group), group),
+          )
+        : section('Options', current.options)),
+      ...(current.options.length ? [] : [h('div', { class: 'db-option-hint' }, 'No options yet. Add one with +.')]),
+    );
+  }
+  draw();
+  return openPopover({ anchor, placement, offset: 4, className: 'menu-popover', content: body, restoreFocus: false });
+}
+
 function editOptions(prop, value, anchor, { onChange, onProperty }) {
   const multi = prop.type === 'multi_select';
+  const status = prop.type === 'status';
   let chosen = multi ? [...(value ?? [])] : value ? [value] : [];
   let options = prop.options ?? [];
   const search = h('input', {
@@ -235,7 +491,6 @@ function editOptions(prop, value, anchor, { onChange, onProperty }) {
   const list = h('div', { class: 'db-option-list', role: 'listbox' });
   let active = 0;
   let visible = [];
-  let renaming = null;
 
   const commit = () => onChange(multi ? (chosen.length ? chosen : null) : (chosen[0] ?? null));
   const saveOptions = (next) => {
@@ -258,52 +513,28 @@ function editOptions(prop, value, anchor, { onChange, onProperty }) {
   const create = () => {
     const name = search.value.trim();
     if (!name) return;
-    const option = { id: newId('o'), name, color: nextColor(options) };
+    const option = { id: newId('o'), name, color: nextColor(options), ...(status ? { group: 'todo' } : {}) };
     saveOptions([...options, option]);
     pick(option);
   };
-  const editOption = (option, button) => {
-    openMenu({
-      anchor: button,
-      placement: 'right-start',
-      items: [
-        {
-          label: 'Rename…',
-          icon: 'pencil',
-          onSelect: () => {
-            renaming = option.id;
-            render();
-          },
-        },
-        {
-          label: 'Delete',
-          icon: 'trash-2',
-          danger: true,
-          onSelect: () => {
-            saveOptions(options.filter((item) => item.id !== option.id));
-            if (chosen.includes(option.id)) {
-              chosen = chosen.filter((id) => id !== option.id);
-              commit();
-            }
-            render();
-          },
-        },
-        { separator: true },
-        { heading: 'Colour' },
-        ...COLORS.map((color) => ({
-          label: color[0].toUpperCase() + color.slice(1),
-          checked: option.color === color,
-          onSelect: () => {
-            saveOptions(options.map((item) => (item.id === option.id ? { ...item, color } : item)));
-            render();
-          },
-        })),
-      ],
+  const editOption = (option, button) =>
+    openOptionEditor(option, button, {
+      status,
+      onChange: (changes) => {
+        saveOptions(options.map((item) => (item.id === option.id ? { ...item, ...changes } : item)));
+        render();
+      },
+      onDelete: () => {
+        saveOptions(options.filter((item) => item.id !== option.id));
+        if (chosen.includes(option.id)) {
+          chosen = chosen.filter((id) => id !== option.id);
+          commit();
+        }
+        render();
+      },
     });
-  };
 
   function render() {
-    const status = prop.type === 'status';
     chosenBox.replaceChildren(
       ...chosen
         .map((id) => options.find((option) => option.id === id))
@@ -321,9 +552,14 @@ function editOptions(prop, value, anchor, { onChange, onProperty }) {
       search,
     );
     const query = search.value.trim().toLowerCase();
-    visible = options.filter((option) => !query || option.name.toLowerCase().includes(query));
+    const matching = options.filter((option) => !query || option.name.toLowerCase().includes(query));
+    // A status lists its options stage by stage.
+    visible = status
+      ? STATUS_GROUPS.flatMap(([group]) => matching.filter((option) => (option.group ?? 'todo') === group))
+      : matching;
     const exact = options.some((option) => option.name.toLowerCase() === query);
-    const rows = visible.map((option, index) => {
+    const row = (option) => {
+      const index = visible.indexOf(option);
       const more = h(
         'button',
         {
@@ -337,31 +573,6 @@ function editOptions(prop, value, anchor, { onChange, onProperty }) {
         },
         icon('more', 14),
       );
-      if (renaming === option.id) {
-        const input = h('input', { class: 'input db-option-rename', type: 'text', value: option.name, 'aria-label': 'Option name' });
-        const finish = (save) => {
-          if (renaming !== option.id) return;
-          renaming = null;
-          const name = input.value.trim();
-          if (save && name && name !== option.name) {
-            saveOptions(options.map((item) => (item.id === option.id ? { ...item, name } : item)));
-          }
-          render();
-        };
-        input.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === 'Escape') {
-            event.preventDefault();
-            event.stopPropagation();
-            finish(event.key === 'Enter');
-          }
-        });
-        input.addEventListener('blur', () => finish(true));
-        setTimeout(() => {
-          input.focus();
-          input.select();
-        }, 0);
-        return h('div', { class: 'db-option' }, input);
-      }
       return h(
         'div',
         {
@@ -374,7 +585,13 @@ function editOptions(prop, value, anchor, { onChange, onProperty }) {
         chosen.includes(option.id) ? icon('check', 14) : null,
         more,
       );
-    });
+    };
+    const rows = status
+      ? STATUS_GROUPS.flatMap(([group, label]) => {
+          const inGroup = visible.filter((option) => (option.group ?? 'todo') === group);
+          return inGroup.length ? [h('div', { class: 'db-option-group' }, label), ...inGroup.map(row)] : [];
+        })
+      : visible.map(row);
     if (query && !exact) {
       rows.push(
         h(
@@ -390,8 +607,27 @@ function editOptions(prop, value, anchor, { onChange, onProperty }) {
       );
     }
     list.replaceChildren(
-      h('div', { class: 'db-option-hint' }, options.length ? 'Select an option or create one' : 'Type a name to create an option'),
+      ...(status ? [] : [h('div', { class: 'db-option-hint' }, options.length ? 'Select an option or create one' : 'Type a name to create an option')]),
       ...rows,
+      h('div', { class: 'menu-separator' }),
+      h(
+        'div',
+        {
+          class: 'menu-item db-option-settings',
+          role: 'menuitem',
+          onclick: (event) =>
+            openPropertyEditor({ ...prop, options }, event.currentTarget, {
+              onProperty: (next) => {
+                options = next.options ?? [];
+                chosen = chosen.filter((id) => options.some((option) => option.id === id));
+                onProperty(next);
+                render();
+              },
+            }),
+        },
+        icon('sliders', 15),
+        h('span', { class: 'menu-label' }, 'Edit property'),
+      ),
     );
   }
 
