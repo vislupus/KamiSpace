@@ -38,10 +38,18 @@ function linkView({ tag, className }) {
     };
     render();
     const unsubscribe = context.subscribe(render);
-    dom.addEventListener('click', (event) => {
+    const open = (event) => {
       if (!context.getPage(pageId)) return;
       event.preventDefault();
-      context.openPage(pageId);
+      context.openPage(pageId, event);
+    };
+    dom.addEventListener('click', open);
+    // The middle mouse button opens the page in a new tab.
+    dom.addEventListener('auxclick', (event) => {
+      if (event.button === 1) open(event);
+    });
+    dom.addEventListener('mousedown', (event) => {
+      if (event.button === 1) event.preventDefault();
     });
 
     return {

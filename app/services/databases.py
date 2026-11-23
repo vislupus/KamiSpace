@@ -15,6 +15,7 @@ import copy
 import math
 import re
 import secrets
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -80,7 +81,22 @@ MAX_ROWS = 5000
 TITLE_ID = "title"
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,24}$")
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_MOMENT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$")
+
+
+def clean_moment(value: Any) -> str | None:
+    """A day ("YYYY-MM-DD") or a day with a time on the 24-hour clock ("…THH:MM").
+
+    Times are clock times in the installation's time zone; nothing is
+    converted. Dates that do not exist (30 February) are refused.
+    """
+    if not isinstance(value, str) or not _MOMENT_RE.match(value):
+        return None
+    try:
+        datetime.strptime(value, "%Y-%m-%dT%H:%M" if "T" in value else "%Y-%m-%d")
+    except ValueError:
+        return None
+    return value
 
 
 def new_id(prefix: str) -> str:
@@ -329,10 +345,12 @@ def _clean_value(prop: dict[str, Any], value: Any, users: set[int]) -> Any:
             value = {"start": value}
         if not isinstance(value, dict):
             return None
-        start, end = value.get("start"), value.get("end")
-        if not isinstance(start, str) or not _DATE_RE.match(start):
+        start, end = clean_moment(value.get("start")), clean_moment(value.get("end"))
+        if start is None:
             return None
-        if not isinstance(end, str) or not _DATE_RE.match(end) or end <= start:
+        # An end only counts when it is later and of the same kind as the
+        # start (both whole days, or both with a time).
+        if end is None or ("T" in end) != ("T" in start) or end <= start:
             return {"start": start}
         return {"start": start, "end": end}
     if prop_type == "person":

@@ -4,7 +4,7 @@ import { h, replace } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { openModal } from '../lib/modal.js';
 import { debounce } from '../lib/util.js';
-import { createPage } from './actions.js';
+import { createPage, openPage, wantsNewTab } from './actions.js';
 import { navigate, pagePath } from './router.js';
 import { ancestorsOf, getPage, pageTitle, personalWorkspace, store } from './store.js';
 
@@ -63,14 +63,16 @@ export function openSearch() {
       }));
   }
 
-  function choose(item) {
+  function choose(item, event = null) {
     if (!item) return;
-    modal.close();
     if (item.kind === 'create') {
+      modal.close();
       createPage({ workspaceId: personalWorkspace()?.id, title: item.query });
-    } else {
-      navigate(pagePath(item.id));
+      return;
     }
+    // Ctrl+Enter, Ctrl+click or the middle button: a new tab, search stays open.
+    if (!wantsNewTab(event)) modal.close();
+    openPage(item.id, event);
   }
 
   function setActive(index) {
@@ -111,7 +113,15 @@ export function openSearch() {
             item.snippet ? h('div', { class: 'palette-snippet' }, highlighted(item.snippet)) : null,
           ),
         );
-        row.addEventListener('click', () => choose(item));
+        row.addEventListener('click', (event) => choose(item, event));
+        row.addEventListener('auxclick', (event) => {
+          if (event.button !== 1) return;
+          event.preventDefault();
+          choose(item, event);
+        });
+        row.addEventListener('mousedown', (event) => {
+          if (event.button === 1) event.preventDefault();
+        });
         row.addEventListener('mousemove', () => {
           if (active !== index) setActive(index);
         });
@@ -164,7 +174,7 @@ export function openSearch() {
       if (items.length) setActive((active - 1 + items.length) % items.length);
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      choose(items[active]);
+      choose(items[active], event);
     }
   });
 

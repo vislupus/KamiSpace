@@ -292,6 +292,36 @@ one begins and ends.
 close together, headings get air above them — the same on the page, inside
 toggles and in columns.
 
+**Tables** (`/table`) behave like Notion's simple tables. Nothing is shown
+until the pointer is over the table; then a bar on the right adds a column and
+a bar below adds a row — click for one, drag for several (dragging back removes
+empty ones). The small handle on the top edge of a column, or the left edge of
+a row, opens a menu (insert, clear contents, delete, header row / column) and
+can be dragged to move the column or row. Drag the line between two columns to
+resize them. The cell you are writing in has a blue frame; Tab goes to the
+next cell, Enter to the cell below, Shift+Enter breaks the line.
+
+**Calendar** (sidebar) shows everything that has a date: rows of every
+database you can open (their *Date* property, with or without a time) and
+tasks due for you — next to the official holidays of Bulgaria. Nothing is
+fetched from the internet.
+
+- Views: **Year** (all twelve months at a glance, with the list of the year's
+  holidays), **Month**, **Week** and **Day** (time grid). Weeks start on
+  Monday and carry their ISO week number; dates read DD.MM.YYYY, times use the
+  24-hour clock, and "today" and "now" are those of Europe/Sofia whatever the
+  time zone of the computer.
+- Holidays are calculated, not downloaded: the fixed official holidays, the
+  Orthodox Easter days (Good Friday to Easter Monday), and the working day off
+  that follows a holiday on a Saturday or Sunday (Labour Code, art. 154).
+  1 November is marked as a day without classes. The days the clocks change
+  are marked in the week and day views.
+- *New event* (or a click on a day or an hour) adds a row to one of your
+  databases; drag an event to another day to move it; click it to open its
+  page. Without a database yet, the calendar offers to create an *Events* one.
+- A *Date* property can include a time (*Include time* in its editor) and an
+  end. Every date in the app is chosen from the same month grid.
+
 **Databases** — `/database` puts a table into the page, `/board` a Kanban
 board. Both are views of the same thing: a set of rows, where every row is a
 page of its own with *properties* (status, person, date, number, select,
@@ -379,22 +409,38 @@ down (or use the arrow keys), then *Save position*.
 
 | Shortcut | Action |
 |---|---|
-| Ctrl+K | Search pages — or, with text selected, add/edit a link |
+| Ctrl+K or Ctrl+P | Search pages — Ctrl+K with text selected adds / edits a link |
+| Ctrl+click, middle mouse button | Open a page in a new tab (sidebar, links, search results, database rows and cards, calendar) |
+| Ctrl+[ / Ctrl+] | Back / forward |
+| Ctrl+Shift+U | Go to the parent page |
+| Alt+N | New page |
+| Ctrl+\\ | Show / hide the sidebar |
+| Ctrl+Shift+L | Light / dark |
+| Ctrl+Shift+F | Focus mode (Esc to leave) |
+| Ctrl+/ | List of shortcuts |
+| Esc | Select the block the caret is in |
+| ↑ / ↓ (block selected) | Select the block above / below |
+| Enter (block selected) | Write in it again |
+| Delete or Backspace (block selected) | Delete the block — also while its ⠿ menu is open |
+| Ctrl+D | Duplicate the block |
+| Ctrl+Shift+↑ / ↓ (or Alt+Shift+↑ / ↓) | Move the block (or list item) up / down |
+| Ctrl+Shift+0 | Turn into text |
+| Ctrl+Shift+1 / 2 / 3 | Heading 1 / 2 / 3 |
+| Ctrl+Shift+4 / 5 / 6 | To-do list / bulleted list / numbered list |
+| Ctrl+Shift+7 / 8 / 9 | Toggle list / code block / new sub-page |
+| Ctrl+Enter | Tick a to-do item; open / close the toggle |
+| Ctrl+Alt+T | Open / close all toggles |
 | Ctrl+B / I / U | Bold / italic / underline |
 | Ctrl+Shift+S, Ctrl+E | Strikethrough, inline code |
 | Ctrl+Shift+H | Highlight |
 | Ctrl+Shift+E | Inline equation |
-| Ctrl+Alt+7 | Toggle list |
-| Ctrl+Enter | Open / close the toggle |
-| Ctrl+Alt+1…3 | Heading 1…3 |
-| Alt+Shift+↑ / ↓ | Move the block (or list item) up / down |
-| Ctrl+D | Duplicate the block |
-| Tab / Shift+Tab | Indent / outdent a list item; move a block into / out of the toggle above it |
+| Tab / Shift+Tab | Indent / outdent a list item; move a block into / out of the toggle above it; next / previous table cell |
+| Enter / Shift+Enter in a table | Cell below (a new row at the end) / line break inside the cell |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
-| Alt+N | New page |
-| Ctrl+\\ | Show / hide the sidebar |
-| Ctrl+Shift+F | Focus mode (Esc to leave) |
-| Ctrl+/ | List of shortcuts |
+| T · Y / M / W / D · ← / → | Calendar: today · year, month, week, day view · previous / next |
+
+Ctrl+Alt+0…9 does the same as Ctrl+Shift+0…9. Shortcuts follow the physical
+keys, so they also work while a Cyrillic keyboard layout is active.
 
 On macOS use ⌘ instead of Ctrl.
 
@@ -435,7 +481,16 @@ pages, versions, conflicts, uploads, search, backups, migrations):
 uv run pytest
 ```
 
-Browser tests (Playwright, 155+ tests: databases and boards, tasks, Markdown shortcuts, slash commands,
+Calendar arithmetic (Node's own test runner, no dependencies): holidays,
+Orthodox Easter, days in lieu, ISO weeks, leap years, clock changes checked
+against the time zone database:
+
+```bash
+cd frontend && npm run test:unit
+```
+
+Browser tests (Playwright, 180+ tests: calendar, tables, keyboard and new-tab
+habits, databases and boards, tasks, Markdown shortcuts, slash commands,
 block drag-and-drop (also into toggles), pictures, toolbar, links, uploads,
 autosave, conflicts, responsive
 layout at laptop sizes, long-document performance):
@@ -506,6 +561,9 @@ automated tests.
 | Pages | Unlimited nesting, sub-pages linked in their parent, icon, cover image with repositioning, appearance (font, text size, full width), lock, create / rename / move (dialog and sidebar drag-and-drop) / duplicate / delete, recycle bin, favourites, recents, breadcrumbs, library of all pages |
 | Markdown | Export a page as `.md`, import `.md` files as pages, copy page contents |
 | Tasks | Assign to-do items to people (`@name`, carried over on Enter, several at once, whole list), due dates, "My tasks" with a counter; the assignee can tick a task from the list or in a read-only page |
+| Calendar | Year / month / week / day views; Monday-first ISO weeks with week numbers; DD.MM.YYYY and 24-hour time; Europe/Sofia with clock changes; Bulgarian official holidays, Orthodox Easter and days in lieu, calculated offline; dated database rows (with or without time, ranges) and due tasks; new events, drag to another day |
+| Tables | Notion-style simple tables: add bars with drag, row / column handles with menus and drag-to-move, header row / column, column resize, framed current cell, Enter / Tab navigation |
+| Keyboard and mouse | Block selection (Esc, arrows, Enter, Delete), Ctrl+Shift+0…9 turn-into, layout-independent shortcuts (work on a Cyrillic layout), middle button / Ctrl+click to open in a new tab |
 | Databases | Inline or full-page; rows are pages; properties: title, text, number (plain, percent, progress bar), select, multi-select, status, date (with end date), person, checkbox, URL; table view (inline editing, resize and reorder columns, drag rows, calculations) and board view (group by status / select / person, drag cards); several views per database with filters, sorts, search and hidden properties; row pages with a property list; permissions, recycle bin and search as for pages |
 | Search | SQLite FTS5 over titles, content and page hierarchy; prefix matching, ranked, highlighted snippets, permission filtered; Ctrl+K palette with keyboard navigation |
 | Accounts | Username and password only, changeable username, Argon2id hashes, server-side sessions in HttpOnly cookies, idle and absolute expiry, CSRF protection, sign-in rate limiting, change password, list and revoke own sessions |
@@ -520,13 +578,15 @@ automated tests.
 
 | Area | Limit |
 |---|---|
-| Block handles | A table is one block: its rows and cells have their own toolbar, not handles. A column layout cannot be dropped inside another column |
+| Block handles | A table is one block; its rows and columns have their own handles. A column layout cannot be dropped inside another column |
+| Tables | Cells cannot be merged from the interface. A selected block is one block: Shift+↑/↓ does not extend the selection to several blocks (select text across them with the mouse or Shift+arrows instead) |
+| Calendar | Holidays follow the Labour Code as in force since 2017 (earlier years are shown without days in lieu); extra days off declared by the government for a single year, and school holidays, are not included. Times are clock times in Europe/Sofia — the zone is fixed, not a setting. Events are moved by whole days (drag); their time is changed in the date editor. Recurring events and reminders do not exist |
 | Paste from Word | Pictures are recovered from the clipboard's RTF data, which is how Word provides them; tested with clipboard data in Word's format, not with every Word version. Pictures that cannot be recovered are left out with a notice |
 | Embeds | Many sites refuse to be shown inside another page; for those the frame stays empty and the link below it opens the site. Only `https` pages can be embedded |
 | Web bookmarks | Title and description are fetched by the server, which therefore needs outbound internet access (and no proxy in between). Without it the card shows the address |
 | Markdown export | Pictures and files are referenced, not bundled, so a `.md` file imports with its pictures only on the same KamiSpace instance. Text colours, assignees and due dates are not written to Markdown |
 | Tasks | The assignee is not notified (nothing is emailed); they see the task in "My tasks". Rows of a database that have a person are not listed there — "My tasks" covers to-do items |
-| Databases | No relations between databases, roll-ups or formulas; views are table and board (no timeline, calendar or gallery). Property values are not part of version history and are not searched (row names and page text are). Deleting the database block from a page leaves the database as a sub-page; delete that page to remove it. Two people editing the same database see each other's changes after reloading |
+| Databases | No relations between databases, roll-ups or formulas; views are table and board (no timeline or gallery; the Calendar shows the dated rows of all databases together). Property values are not part of version history and are not searched (row names and page text are). Deleting the database block from a page leaves the database as a sub-page; delete that page to remove it. Two people editing the same database see each other's changes after reloading |
 | Images | Width is kept as a percentage of the text column (10–100 %). Pictures cannot be cropped, and text does not wrap around them |
 | Links | Clicking a link opens it (as in Notion); to change its text, edit around it or use *Edit link* on the hover card. The hover card needs a pointer |
 | Touch devices | Reading and typing work and the layout adapts, but block handles and drag-and-drop need a pointer |
@@ -537,8 +597,8 @@ automated tests.
 ### Planned — not implemented
 
 Backlinks ("pages that link here"), graph view, templates, comments, synced
-blocks, database relations / roll-ups / formulas and timeline or calendar
-views, PDF export, side-by-side version comparison
+blocks, database relations / roll-ups / formulas and timeline views,
+recurring events, PDF export, side-by-side version comparison
 (full snapshots are already stored for it), real-time collaborative editing,
 two-factor authentication.
 

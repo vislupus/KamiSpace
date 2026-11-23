@@ -25,10 +25,11 @@ import { ImageBlock } from './extensions/image.js';
 import { LinkEditor } from './extensions/link-editor.js';
 import { Audio, Video } from './extensions/media.js';
 import { DatabaseBlock } from './extensions/database.js';
+import { NotionKeys } from './extensions/notion-keys.js';
 import { PageLink, PageMention, PageMentions } from './extensions/page-link.js';
 import { PasteImages } from './extensions/paste-images.js';
 import { SlashCommands } from './extensions/slash.js';
-import { TableToolbar } from './extensions/table-toolbar.js';
+import { TableControls } from './extensions/table-controls.js';
 import { AssignableTaskItem } from './extensions/task-item.js';
 import { Toggle, ToggleContent, ToggleSummary } from './extensions/toggle.js';
 import { Uploads } from './extensions/uploads.js';
@@ -122,8 +123,9 @@ export function createEditor({
         PageMentions,
         BlockHandle,
         BubbleToolbar,
-        TableToolbar,
+        TableControls,
         BlockKeys.configure({ onExitTop }),
+        NotionKeys,
         PasteImages.configure({ upload }),
         Uploads.configure({ upload, limits }),
       ]

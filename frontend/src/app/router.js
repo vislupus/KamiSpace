@@ -8,6 +8,7 @@ export function parseRoute(pathname = location.pathname) {
   if (pathname === '/trash') return { name: 'trash' };
   if (pathname === '/library') return { name: 'library' };
   if (pathname === '/tasks') return { name: 'tasks' };
+  if (pathname === '/calendar') return { name: 'calendar' };
   return { name: 'home' };
 }
 

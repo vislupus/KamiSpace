@@ -9,9 +9,10 @@ import { promptDialog } from '../lib/modal.js';
 import { toast, toastError } from '../lib/toast.js';
 import { clamp, debounce, timeAgo } from '../lib/util.js';
 import {
-  createPage,
   copyPageLink,
+  createPage,
   duplicatePage,
+  openPage,
   purgePage,
   restorePage,
   toggleFavorite,
@@ -820,7 +821,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
     pageId: page.id,
     getPage: (id) => getPage(id),
     listPages: () => [...store.pages.values()],
-    openPage: (id) => navigate(pagePath(id)),
+    openPage: (id, event) => openPage(id, event),
     // Sub-pages made from inside the editor are linked where the caret is,
     // so the server must not add a second link at the end of the page.
     createSubPage: (title) =>

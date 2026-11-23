@@ -1,24 +1,14 @@
 // My tasks: to-do items assigned to you, from every page you can open.
 import { api } from '../lib/api.js';
+import { formatDate, now } from '../lib/bgcalendar.js';
 import { h, replace } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { toastError } from '../lib/toast.js';
 import { pagePath } from './router.js';
 import { emit, setOpenTasks } from './store.js';
 
-function todayIso() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
-
-function formatDue(due) {
-  const [year, month, day] = due.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: year === new Date().getFullYear() ? undefined : 'numeric',
-  });
-}
+const todayIso = () => now().date;
+const formatDue = formatDate;
 
 export function mountTasks({ container, topbar }) {
   document.title = 'My tasks · KamiSpace';

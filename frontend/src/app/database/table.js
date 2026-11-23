@@ -207,7 +207,12 @@ export function renderTable(ctx) {
             title: 'Open this page',
             onclick: (event) => {
               event.stopPropagation();
-              ctx.openRow(row);
+              ctx.openRow(row, event);
+            },
+            onauxclick: (event) => {
+              if (event.button !== 1) return;
+              event.preventDefault();
+              ctx.openRow(row, event);
             },
           },
           icon('external', 12),
@@ -215,7 +220,16 @@ export function renderTable(ctx) {
         );
         cell.append(open);
         // A viewer cannot edit, so the whole cell opens the page.
-        if (!editable) cell.addEventListener('click', () => ctx.openRow(row));
+        if (!editable) cell.addEventListener('click', (event) => ctx.openRow(row, event));
+        // The middle button on the name opens the row in a new tab.
+        cell.addEventListener('auxclick', (event) => {
+          if (event.button !== 1) return;
+          event.preventDefault();
+          ctx.openRow(row, event);
+        });
+        cell.addEventListener('mousedown', (event) => {
+          if (event.button === 1) event.preventDefault();
+        });
         if (editable && ctx.editTitleOf === row.id) setTimeout(() => cell.isConnected && edit(), 0);
       }
       if (editable) cell.addEventListener('click', edit);

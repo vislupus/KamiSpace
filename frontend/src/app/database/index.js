@@ -2,6 +2,7 @@
 // table or as a board. Used inline inside a page (the "database" block) and
 // as the whole page when a database is opened by itself.
 import { api } from '../../lib/api.js';
+import { dateInput } from '../../lib/datepicker.js';
 import { h, replace } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 import { openMenu } from '../../lib/menu.js';
@@ -9,7 +10,8 @@ import { confirmDialog, promptDialog } from '../../lib/modal.js';
 import { openPopover } from '../../lib/popover.js';
 import { toast, toastError } from '../../lib/toast.js';
 import { debounce, storageGet, storageSet } from '../../lib/util.js';
-import { navigate, pagePath } from '../router.js';
+import { openPage } from '../actions.js';
+import { pagePath } from '../router.js';
 import { patchPage, refreshTree, store } from '../store.js';
 import { renderBoard } from './board.js';
 import { renderTable } from './table.js';
@@ -619,9 +621,12 @@ export function mountDatabase({ container, databaseId, inline = false }) {
     if (prop.type === 'person') {
       return choice([['', 'Select…'], ...[...store.users].map(([id, name]) => [id, name])], rule.value ?? '', (value) => update({ value: value || null }), 'Value');
     }
+    if (prop.type === 'date') {
+      return dateInput({ value: rule.value, label: 'Value', onChange: (value) => update({ value }, false) }).el;
+    }
     const input = h('input', {
       class: 'input',
-      type: prop.type === 'date' ? 'date' : 'text',
+      type: 'text',
       inputMode: prop.type === 'number' ? 'decimal' : null,
       value: rule.value ?? '',
       placeholder: 'Value',
@@ -898,7 +903,7 @@ export function mountDatabase({ container, databaseId, inline = false }) {
       changeView,
       propertyMenu,
       addProperty,
-      openRow: (row) => navigate(pagePath(row.id)),
+      openRow: (row, event) => openPage(row.id, event),
     };
     replace(body, view.type === 'board' ? renderBoard(context) : renderTable(context));
     const next = body.querySelector('.db-scroll');

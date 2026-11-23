@@ -187,7 +187,8 @@ test('navigating between pages does not leak editors or listeners', async ({ pag
   await expect(page.locator('.ProseMirror')).toHaveCount(1);
   await expect(page.locator('.bubble-toolbar')).toHaveCount(1);
   await expect(page.locator('.block-handle')).toHaveCount(1);
-  await expect(page.locator('.table-toolbar')).toHaveCount(1);
+  await expect(page.locator('.table-add')).toHaveCount(2);
+  await expect(page.locator('.table-handle')).toHaveCount(2);
   await expect(page.locator('.popover:not(.bubble-toolbar)')).toHaveCount(0);
   expect(second.id).toBeGreaterThan(first.id);
 });

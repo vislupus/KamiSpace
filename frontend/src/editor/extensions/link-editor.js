@@ -44,11 +44,11 @@ function absoluteUrl(href) {
   }
 }
 
-function followLink(editor, href) {
+function followLink(editor, href, event = null) {
   const pageId = linkedPageId(href);
   const context = appContext(editor);
   if (pageId && context.getPage(pageId)) {
-    context.openPage(pageId);
+    context.openPage(pageId, event);
     return;
   }
   window.open(href, '_blank', 'noopener,noreferrer');
@@ -434,7 +434,7 @@ export const LinkEditor = Extension.create({
             if (!anchor || !view.dom.contains(anchor) || event.button !== 0) return false;
             if (anchor.closest('.page-link, .page-mention, .bookmark, .attachment')) return false;
             hover.hide();
-            followLink(editor, anchor.getAttribute('href'));
+            followLink(editor, anchor.getAttribute('href'), event);
             return true;
           },
           handleKeyDown() {
@@ -467,6 +467,16 @@ export const LinkEditor = Extension.create({
             return true;
           },
           handleDOMEvents: {
+            // The middle mouse button opens a link in a new tab.
+            auxclick(view, event) {
+              const anchor = event.button === 1 ? event.target.closest?.('a[href]') : null;
+              if (!anchor || !view.dom.contains(anchor)) return false;
+              if (anchor.closest('.page-link, .page-mention, .bookmark, .attachment, .database-block')) return false;
+              event.preventDefault();
+              hover.hide();
+              window.open(absoluteUrl(anchor.getAttribute('href')), '_blank', 'noopener,noreferrer');
+              return true;
+            },
             mouseover(view, event) {
               const anchor = event.target.closest?.('a[href]');
               if (

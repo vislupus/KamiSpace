@@ -588,7 +588,9 @@ test.describe('To-do items and My tasks', () => {
     await expect(item.locator('.task-assignee')).toHaveText('bob');
 
     await item.getByRole('button', { name: 'Set a due date' }).click();
-    await page.locator('.due-editor input[type="date"]').fill('2020-01-15');
+    await page.locator('.due-editor input[aria-label="Due date"]').fill('15.01.2020');
+    await page.keyboard.press('Enter');
+    await expect(item.locator('.task-due')).toHaveText('15.01.2020');
     await expect(item.locator('.task-due')).toHaveClass(/is-overdue/);
     await waitForSaved(page);
     const stored = await storedContent(page, created.id);

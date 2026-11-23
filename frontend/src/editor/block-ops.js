@@ -137,6 +137,41 @@ function removeBlock(tr, pos) {
   else tr.replaceWith(from, to, tr.doc.type.schema.nodes.paragraph.create());
 }
 
+/**
+ * Position of the block before (-1) or after (1) the block at `pos`, in
+ * reading order: the neighbour in the same container, the first or last item
+ * of a neighbouring list, or — at the edge of a list or container — the
+ * block next to it. null at the ends of the document.
+ */
+export function adjacentBlockPos(doc, pos, direction) {
+  const $pos = doc.resolve(pos);
+  let depth = $pos.depth;
+  let start = pos;
+  for (;;) {
+    const parent = $pos.node(depth);
+    const index = $pos.index(depth);
+    const sibling = index + direction;
+    if (sibling >= 0 && sibling < parent.childCount) {
+      let node = parent.child(sibling);
+      let target = direction > 0 ? start + parent.child(index).nodeSize : start - node.nodeSize;
+      // A list is structure: step to its first (or last) item.
+      while (LIST_TYPES.has(node.type.name) && node.childCount) {
+        if (direction > 0) {
+          target += 1;
+          node = node.firstChild;
+        } else {
+          target += node.nodeSize - 1 - node.lastChild.nodeSize;
+          node = node.lastChild;
+        }
+      }
+      return target;
+    }
+    if (depth === 0) return null;
+    start = $pos.before(depth);
+    depth -= 1;
+  }
+}
+
 export function deleteBlock(editor, pos) {
   const { state, view } = editor;
   if (!state.doc.nodeAt(pos)) return false;
