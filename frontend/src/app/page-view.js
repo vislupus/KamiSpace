@@ -19,7 +19,7 @@ import {
   trashPage,
 } from './actions.js';
 import { mountDatabase } from './database/index.js';
-import { TYPES, editValue, renderValue } from './database/values.js';
+import { ADDABLE_TYPES, TYPES, editValue, newId, renderValue } from './database/values.js';
 import { openEmojiPicker } from './emoji.js';
 import { downloadText, importMarkdown } from './import.js';
 import { navigate, pagePath } from './router.js';
@@ -62,7 +62,7 @@ function pickImage() {
  * Mount a page into `container`. Returns { flush, destroy }.
  * `shell` gives access to the top bar and application-level actions.
  */
-export async function mountPageView({ container, topbar, pageId, shell, mountSignal }) {
+export async function mountPageView({ container, topbar, pageId, shell, mountSignal, peek = false }) {
   const controller = new AbortController();
   const { signal } = controller;
   const subscriptions = [];
@@ -381,8 +381,8 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
   function renderRowProps() {
     const row = page.row;
     const properties = (row?.properties ?? []).filter((prop) => prop.type !== 'title');
-    rowProps.hidden = !properties.length;
-    if (!properties.length) return;
+    rowProps.hidden = !row;
+    if (!row) return;
     const rowUrl = `/api/databases/${row.database_id}`;
     replace(
       rowProps,
@@ -405,6 +405,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
                   await rowSchemaSave;
                   const saved = await api.patch(`${rowUrl}/rows/${page.id}`, { props: { [prop.id]: next } });
                   row.props = saved.props;
+                  emit('row-updated', { databaseId: row.database_id, rowId: page.id });
                 } catch (error) {
                   toastError(error, 'Could not save the change');
                 }
@@ -416,6 +417,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
                   .patch(rowUrl, { properties: row.properties })
                   .catch((error) => toastError(error, 'Could not save the options'));
                 await rowSchemaSave;
+                emit('row-updated', { databaseId: row.database_id, rowId: page.id });
               },
             }),
           );
@@ -427,6 +429,42 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
           cell,
         );
       }),
+      editable
+        ? h(
+            'button',
+            {
+              class: 'row-prop-add',
+              type: 'button',
+              onclick: (event) =>
+                openMenu({
+                  anchor: event.currentTarget,
+                  items: [
+                    { heading: 'New property' },
+                    ...ADDABLE_TYPES.map((type) => ({
+                      label: TYPES[type].label,
+                      icon: TYPES[type].icon,
+                      onSelect: async () => {
+                        const used = new Set(row.properties.map((item) => item.name));
+                        let name = TYPES[type].label;
+                        for (let n = 2; used.has(name); n += 1) name = `${TYPES[type].label} ${n}`;
+                        const added = { id: newId('p'), name, type };
+                        try {
+                          const saved = await api.patch(rowUrl, { properties: [...row.properties, added] });
+                          row.properties = saved.properties;
+                          renderRowProps();
+                          emit('row-updated', { databaseId: row.database_id, rowId: page.id });
+                        } catch (error) {
+                          toastError(error, 'Could not add the property');
+                        }
+                      },
+                    })),
+                  ],
+                }),
+            },
+            icon('plus', 14),
+            'Add a property',
+          )
+        : null,
     );
   }
 
@@ -446,6 +484,8 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
         page[key] = result[key];
       }
       patchPage(page.id, { title: result.title, icon: result.icon });
+      // The database that shows this row (beside the peek, or later) follows.
+      if (page.row) emit('row-updated', { databaseId: page.row.database_id, rowId: page.id });
       return true;
     } catch (error) {
       toastError(error, 'Could not update the page');
@@ -714,7 +754,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
     if (title.value.includes('\n')) title.value = title.value.replace(/\n+/g, ' ');
     resizeTitle();
     page.title = title.value.trim();
-    document.title = `${page.title || 'Untitled'} · KamiSpace`;
+    if (!peek) document.title = `${page.title || 'Untitled'} · KamiSpace`;
     patchPage(page.id, { title: page.title });
     renderCrumbs();
     saveTitle();
@@ -813,7 +853,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
   renderCrumbs();
   renderStar();
   resizeTitle();
-  document.title = `${page.title || 'Untitled'} · KamiSpace`;
+  if (!peek) document.title = `${page.title || 'Untitled'} · KamiSpace`;
   // A new page starts at the top, without animating from the old position.
   container.scrollTo({ top: 0, behavior: 'instant' });
 

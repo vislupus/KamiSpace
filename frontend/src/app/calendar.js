@@ -29,15 +29,18 @@ import {
   startOfWeek,
   weekday,
 } from '../lib/bgcalendar.js';
-import { dateInput, timeInput } from '../lib/datepicker.js';
+import { createMonthPicker, dateInput, timeInput } from '../lib/datepicker.js';
 import { h, replace } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
+import { openMenu } from '../lib/menu.js';
 import { isModalOpen, openModal } from '../lib/modal.js';
-import { hasOpenPopover } from '../lib/popover.js';
+import { hasOpenPopover, openPopover } from '../lib/popover.js';
 import { toast, toastError } from '../lib/toast.js';
-import { storageGet, storageSet } from '../lib/util.js';
-import { pagePath } from './router.js';
-import { personalWorkspace, refreshTree } from './store.js';
+import { debounce, storageGet, storageSet } from '../lib/util.js';
+import { copyPageLink, wantsNewTab } from './actions.js';
+import { openPeek, peekedPageId } from './peek.js';
+import { navigate, pagePath } from './router.js';
+import { on, personalWorkspace, refreshTree } from './store.js';
 
 const VIEWS = [
   ['year', 'Year', 'KeyY'],
@@ -46,17 +49,59 @@ const VIEWS = [
   ['day', 'Day', 'KeyD'],
 ];
 const HOUR = 48; // pixels per hour in the week and day views
+const SNAP = 15; // minutes
+const LANE = 22; // height of one line of events in a month cell
+const COLORS = ['blue', 'green', 'purple', 'orange', 'pink', 'yellow', 'red', 'brown', 'gray'];
 const VIEW_KEY = 'kamispace-calendar-view';
+const HIDDEN_KEY = 'kamispace-calendar-hidden';
+const SIDE_KEY = 'kamispace-calendar-side';
 
 const pad = (value) => String(value).padStart(2, '0');
 const dayOf = (moment) => moment.slice(0, 10);
 const timeOf = (moment) => (moment.length > 10 ? moment.slice(11, 16) : null);
 const minutesOf = (time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 const clock = (minutes) => `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+const lastDay = (item) => dayOf(item.end ?? item.start);
+const formatMoment = (moment) => (moment.length > 10 ? `${formatDate(moment)} ${moment.slice(11, 16)}` : formatDate(moment));
 
-/** Does the item take place (at least partly) on this day? */
-function onDay(item, day) {
-  return dayOf(item.start) <= day && dayOf(item.end ?? item.start) >= day;
+/** A clock time moved by days and minutes ("2026-11-23T23:30" + 45 min → the next day, 00:15). */
+function shiftMoment(moment, days, minutes) {
+  if (moment.length <= 10) return addDays(moment, days);
+  const total = minutesOf(timeOf(moment)) + minutes;
+  const carry = Math.floor(total / 1440);
+  return `${addDays(dayOf(moment), days + carry)}T${clock(((total % 1440) + 1440) % 1440)}`;
+}
+
+/** An event spanning days, or without a time, is drawn as a bar; a timed one as a line with a dot. */
+const isBar = (item) => !timeOf(item.start) || dayOf(item.start) !== lastDay(item);
+
+/**
+ * Put events on lines so that none overlap: [{ item, from, to, lane }] with
+ * `from` / `to` as column numbers in `days`.
+ */
+function layoutBars(days, list) {
+  const first = days[0];
+  const last = days.at(-1);
+  const sorted = list
+    .filter((item) => dayOf(item.start) <= last && lastDay(item) >= first)
+    .sort(
+      (a, b) =>
+        Number(isBar(b)) - Number(isBar(a)) ||
+        dayOf(a.start).localeCompare(dayOf(b.start)) ||
+        daysBetween(dayOf(b.start), lastDay(b)) - daysBetween(dayOf(a.start), lastDay(a)) ||
+        a.start.localeCompare(b.start),
+    );
+  // Which columns of each line are taken already.
+  const lanes = [];
+  return sorted.map((item) => {
+    const from = Math.max(daysBetween(first, dayOf(item.start)), 0);
+    const to = Math.min(daysBetween(first, lastDay(item)), days.length - 1);
+    const free = (taken) => taken.slice(from, to + 1).every((used) => !used);
+    let lane = lanes.findIndex(free);
+    if (lane < 0) lane = lanes.push(new Array(days.length).fill(false)) - 1;
+    for (let column = from; column <= to; column += 1) lanes[lane][column] = true;
+    return { item, from, to, lane, startsBefore: dayOf(item.start) < first, endsAfter: lastDay(item) > last };
+  });
 }
 
 export function mountCalendar({ container, topbar }) {
@@ -71,11 +116,23 @@ export function mountCalendar({ container, topbar }) {
   let loaded = null; // "start|end" of the data on screen
   let destroyed = false;
   let request = 0;
+  const hidden = new Set(storageGet(HIDDEN_KEY, []));
+  let sideOpen = storageGet(SIDE_KEY, true);
+  let shownRange = null;
+  let timeScroll = null; // where the time grid is scrolled to
 
   const header = h('div', { class: 'cal-head' });
   const body = h('div', { class: 'cal-body' });
-  const root = h('div', { class: 'cal' }, header, body);
+  const side = h('aside', { class: 'cal-side', 'aria-label': 'Calendars' });
+  const root = h('div', { class: 'cal' }, side, h('div', { class: 'cal-main' }, header, body));
   replace(container, root);
+
+  const showHolidays = () => !hidden.has('holidays');
+  const special = (day) => (showHolidays() ? holidaysOn(day) : []);
+  const colorOf = (item) => (item.kind === 'task' ? 'task' : COLORS[item.database_id % COLORS.length]);
+  const visibleItems = () =>
+    items.filter((item) => (item.kind === 'task' ? !hidden.has('tasks') : !hidden.has(`db:${item.database_id}`)));
+  const onDay = (day) => visibleItems().filter((item) => dayOf(item.start) <= day && lastDay(item) >= day);
 
   // -- what is shown ---------------------------------------------------------------
 
@@ -121,6 +178,8 @@ export function mountCalendar({ container, topbar }) {
     const key = `${start}|${end}`;
     if (!force && key === loaded) return;
     const current = ++request;
+    // Marks the calendar as waiting for data (also a signal for tests).
+    root.dataset.busy = '1';
     try {
       const data = await api.get(`/api/calendar?start=${start}&end=${end}`);
       if (destroyed || current !== request) return;
@@ -131,6 +190,7 @@ export function mountCalendar({ container, topbar }) {
     } catch (error) {
       if (!destroyed) toastError(error, 'Could not load the calendar');
     }
+    if (current === request) delete root.dataset.busy;
   }
 
   function show() {
@@ -144,76 +204,162 @@ export function mountCalendar({ container, topbar }) {
 
   // -- events -----------------------------------------------------------------------
 
-  function chip(item, day, { compact = false } = {}) {
-    const time = timeOf(item.start);
-    const startsHere = dayOf(item.start) === day;
-    const label = item.title || 'Untitled';
-    const isTask = item.kind === 'task';
+  function describe(item) {
+    return [
+      item.title || 'Untitled',
+      item.end ? `${formatMoment(item.start)} → ${formatMoment(item.end)}` : formatMoment(item.start),
+      item.kind === 'task'
+        ? item.page_title
+          ? `Task in “${item.page_title}”`
+          : 'Task'
+        : `${item.database_title || 'Database'} · ${item.property}`,
+    ].join('\n');
+  }
+
+  async function removeItem(item) {
+    try {
+      await api.delete(`/api/pages/${item.id}`);
+      refreshTree();
+      load({ force: true });
+      toast('Moved to the recycle bin', {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            await api.post(`/api/trash/${item.id}/restore`).catch((error) => toastError(error));
+            refreshTree();
+            load({ force: true });
+          },
+        },
+      });
+    } catch (error) {
+      toastError(error, 'Could not delete the event');
+    }
+  }
+
+  function itemMenu(item, point) {
+    if (item.id === null || item.id === undefined) return;
+    openMenu({
+      anchor: () => new DOMRect(point.x, point.y, 0, 0),
+      items: [
+        { label: 'Open in side peek', icon: 'peek', onSelect: () => openPeek(item.id) },
+        { label: 'Open as a full page', icon: 'maximize', onSelect: () => navigate(pagePath(item.id)) },
+        { label: 'Open in a new tab', icon: 'external', onSelect: () => window.open(pagePath(item.id), '_blank', 'noopener') },
+        { separator: true },
+        { label: 'Copy link', icon: 'link', onSelect: () => copyPageLink(item.id) },
+        item.kind === 'row' && item.can_edit ? { separator: true } : null,
+        item.kind === 'row' && item.can_edit
+          ? { label: 'Delete', icon: 'trash-2', danger: true, onSelect: () => removeItem(item) }
+          : null,
+      ],
+    });
+  }
+
+  /** A link to the event's page that opens beside the calendar. */
+  function eventElement(item, className, children) {
     const linked = item.id !== null && item.id !== undefined;
     const el = h(
       linked ? 'a' : 'span',
       {
-        class: `cal-chip${isTask ? ' is-task' : ''}${item.checked ? ' is-done' : ''}${startsHere ? '' : ' is-continued'}`,
+        class: `cal-event ${className}${item.kind === 'task' ? ' is-task' : ''}${item.checked ? ' is-done' : ''}${linked && peekedPageId() === item.id ? ' is-peeked' : ''}`,
         href: linked ? pagePath(item.id) : null,
-        dataset: { ...(linked ? { link: '', id: item.id } : {}), color: item.color ?? 'default' },
-        draggable: !isTask && item.can_edit,
-        title: [
-          label,
-          item.end ? `${formatMoment(item.start)} → ${formatMoment(item.end)}` : formatMoment(item.start),
-          isTask ? (item.page_title ? `Task in “${item.page_title}”` : 'Task') : `${item.database_title || 'Database'} · ${item.property}`,
-        ].join('\n'),
+        dataset: { ...(linked ? { id: item.id } : {}), color: colorOf(item) },
+        title: describe(item),
       },
-      isTask ? icon(item.checked ? 'check-circle' : 'tasks', 12) : null,
-      time && startsHere && !compact ? h('span', { class: 'cal-chip-time' }, time) : null,
-      h('span', { class: 'cal-chip-title' }, label),
+      children,
     );
-    if (!isTask && item.can_edit) {
-      el.addEventListener('dragstart', (event) => {
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('application/x-kamispace-event', JSON.stringify({ id: item.id, property: item.property_id, from: day }));
-        event.dataTransfer.setData('text/plain', label);
+    if (linked) {
+      el.addEventListener('click', (event) => {
+        if (wantsNewTab(event)) return; // the browser opens the link in a new tab
+        event.preventDefault();
+        if (el.dataset.dragged) return;
+        openPeek(item.id);
+      });
+      el.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        itemMenu(item, { x: event.clientX, y: event.clientY });
       });
     }
     return el;
   }
 
-  function formatMoment(moment) {
-    return moment.length > 10 ? `${formatDate(moment)} ${moment.slice(11, 16)}` : formatDate(moment);
+  /** One line in a month cell or the all-day row. */
+  function chip(item, { continued = false, continues = false } = {}) {
+    const time = timeOf(item.start);
+    const bar = isBar(item);
+    const el = eventElement(
+      item,
+      `cal-chip${bar ? ' is-bar' : ''}${continued ? ' is-continued' : ''}${continues ? ' continues' : ''}`,
+      [
+        item.kind === 'task' ? icon(item.checked ? 'check-circle' : 'tasks', 12) : bar ? null : h('span', { class: 'cal-dot' }),
+        time && !continued ? h('span', { class: 'cal-chip-time' }, time) : null,
+        h('span', { class: 'cal-chip-title' }, item.title || 'Untitled'),
+      ],
+    );
+    if (item.kind === 'row' && item.can_edit) {
+      el.draggable = true;
+      el.addEventListener('dragstart', (event) => {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData(
+          'application/x-kamispace-event',
+          JSON.stringify({ id: item.id, property: item.property_id, from: el.dataset.day ?? dayOf(item.start) }),
+        );
+        event.dataTransfer.setData('text/plain', item.title || 'Untitled');
+      });
+    }
+    return el;
   }
 
-  /** Move an event by whole days (dragging a chip to another day). */
-  async function moveItem(id, propertyId, fromDay, toDay) {
-    const item = items.find((entry) => entry.kind === 'row' && entry.id === id && entry.property_id === propertyId);
-    const shift = daysBetween(fromDay, toDay);
-    if (!item || !shift) return;
-    const moved = (moment) => addDays(dayOf(moment), shift) + moment.slice(10);
-    const value = { start: moved(item.start), ...(item.end ? { end: moved(item.end) } : {}) };
+  async function saveDates(item, value) {
     Object.assign(item, { start: value.start, end: value.end ?? null });
     render();
+    root.dataset.busy = '1';
     try {
-      await api.patch(`/api/databases/${item.database_id}/rows/${id}`, { props: { [propertyId]: value } });
+      await api.patch(`/api/databases/${item.database_id}/rows/${item.id}`, { props: { [item.property_id]: value } });
     } catch (error) {
       toastError(error, 'Could not move the event');
     }
     load({ force: true });
   }
 
-  function acceptDrops(el, day) {
+  /** Move an event by whole days (dragging a chip to another day). */
+  function moveItem(id, propertyId, fromDay, toDay) {
+    const item = items.find((entry) => entry.kind === 'row' && entry.id === id && entry.property_id === propertyId);
+    const shift = daysBetween(fromDay, toDay);
+    if (!item || !shift) return;
+    saveDates(item, { start: shiftMoment(item.start, shift, 0), ...(item.end ? { end: shiftMoment(item.end, shift, 0) } : {}) });
+  }
+
+  /** Let chips be dropped on `el`; `dayAt(event)` says which day the pointer is over. */
+  function acceptDrops(el, dayAt) {
     el.addEventListener('dragover', (event) => {
       if (!event.dataTransfer.types.includes('application/x-kamispace-event')) return;
       event.preventDefault();
-      el.classList.add('is-drop-target');
+      el.querySelectorAll('.is-drop-target').forEach((cell) => cell.classList.remove('is-drop-target'));
+      dayAt(event)?.cell?.classList.add('is-drop-target');
     });
-    el.addEventListener('dragleave', () => el.classList.remove('is-drop-target'));
+    el.addEventListener('dragleave', (event) => {
+      if (!el.contains(event.relatedTarget)) el.querySelectorAll('.is-drop-target').forEach((cell) => cell.classList.remove('is-drop-target'));
+    });
     el.addEventListener('drop', (event) => {
-      el.classList.remove('is-drop-target');
+      el.querySelectorAll('.is-drop-target').forEach((cell) => cell.classList.remove('is-drop-target'));
       const raw = event.dataTransfer.getData('application/x-kamispace-event');
-      if (!raw) return;
+      const target = dayAt(event);
+      if (!raw || !target) return;
       event.preventDefault();
       const dropped = JSON.parse(raw);
-      moveItem(dropped.id, dropped.property, dropped.from, day);
+      moveItem(dropped.id, dropped.property, dropped.from, target.day);
     });
   }
+
+  /** The day cell under the pointer, among elements that carry data-date. */
+  const cellUnder = (scope) => (event) => {
+    const cells = [...scope.querySelectorAll('[data-date]')];
+    const cell = cells.find((candidate) => {
+      const rect = candidate.getBoundingClientRect();
+      return event.clientX >= rect.left && event.clientX < rect.right && event.clientY >= rect.top && event.clientY < rect.bottom;
+    });
+    return cell ? { cell, day: cell.dataset.date } : null;
+  };
 
   // -- new event --------------------------------------------------------------------
 
@@ -230,7 +376,7 @@ export function mountCalendar({ container, topbar }) {
     }
   }
 
-  function newEvent(day, time = null) {
+  function newEvent(day, time = null, until = null) {
     const targets = sources
       .filter((source) => source.can_edit)
       .flatMap((source) =>
@@ -263,7 +409,7 @@ export function mountCalendar({ container, topbar }) {
                 onclick: async () => {
                   modal.close();
                   await createEventsDatabase();
-                  if (sources.some((source) => source.can_edit)) newEvent(day, time);
+                  if (sources.some((source) => source.can_edit)) newEvent(day, time, until);
                 },
               },
               'Create an “Events” database',
@@ -287,7 +433,11 @@ export function mountCalendar({ container, topbar }) {
     const startDate = dateInput({ value: day, label: 'Start date', onChange: () => {} });
     const endDate = dateInput({ value: null, label: 'End date', onChange: () => {} });
     const startTime = timeInput({ value: time ?? '09:00', label: 'Start time', onChange: () => {} });
-    const endTime = timeInput({ value: clock(Math.min(minutesOf(time ?? '09:00') + 60, 23 * 60 + 59)), label: 'End time', onChange: () => {} });
+    const endTime = timeInput({
+      value: until ?? clock(Math.min(minutesOf(time ?? '09:00') + 60, 23 * 60 + 59)),
+      label: 'End time',
+      onChange: () => {},
+    });
     const wholeDay = h('input', { type: 'checkbox', checked: allDay });
     const layout = () => {
       startTime.el.hidden = allDay;
@@ -335,6 +485,7 @@ export function mountCalendar({ container, topbar }) {
               props: { [chosen.property.id]: value },
             });
             storageSet('kamispace-calendar-target', `${chosen.source.id}:${chosen.property.id}`);
+            hidden.delete(`db:${chosen.source.id}`); // a new event must be visible
             modal.close();
             refreshTree();
             load({ force: true });
@@ -344,7 +495,7 @@ export function mountCalendar({ container, topbar }) {
         },
       },
       name,
-      h('label', { class: 'field-label' }, 'In database'),
+      h('label', { class: 'field-label' }, 'Calendar (database)'),
       target,
       h('label', { class: 'checkbox' }, wholeDay, 'All day'),
       h('div', { class: 'cal-form-row' }, h('span', null, 'Starts'), startDate.el, startTime.el),
@@ -361,15 +512,131 @@ export function mountCalendar({ container, topbar }) {
     name.focus();
   }
 
+  // -- holidays, on request -------------------------------------------------------------
+
+  function openHolidays() {
+    const { year } = parts(cursor);
+    const { forward, back } = clockChanges(year);
+    const modal = openModal({
+      title: `Official holidays ${year}`,
+      className: 'cal-holidays-modal',
+      content: h(
+        'div',
+        { class: 'cal-holidays' },
+        h(
+          'div',
+          { class: 'cal-legend' },
+          h('span', { class: 'cal-key is-holiday' }, 'Holiday'),
+          h('span', { class: 'cal-key is-lieu' }, 'Day off in lieu of a holiday on a weekend'),
+          h('span', { class: 'cal-key is-school' }, 'No classes (a working day)'),
+        ),
+        h(
+          'table',
+          { class: 'cal-holiday-table' },
+          h(
+            'tbody',
+            null,
+            holidays(year).map((item) =>
+              h(
+                'tr',
+                { class: `is-${item.kind}` },
+                h(
+                  'td',
+                  null,
+                  h(
+                    'button',
+                    {
+                      class: 'cal-link',
+                      type: 'button',
+                      onclick: () => {
+                        modal.close();
+                        go('day', item.date);
+                      },
+                    },
+                    formatDate(item.date),
+                  ),
+                ),
+                h('td', null, WEEKDAYS_LONG[weekday(item.date) - 1]),
+                h('td', null, item.name, h('div', { class: 'muted' }, item.nameEn)),
+              ),
+            ),
+          ),
+        ),
+        h(
+          'p',
+          { class: 'muted cal-note' },
+          `Clocks go forward on ${formatDate(forward)} (03:00 → 04:00) and back on ${formatDate(back)} (04:00 → 03:00). `,
+          `${year} has ${isoWeek(isoDate(year, 12, 28)).week} ISO weeks. `,
+          'Holidays follow the Labour Code (art. 154); days off that the government adds for a single year cannot be calculated and are not shown.',
+        ),
+      ),
+    });
+  }
+
+  // -- the panel on the left --------------------------------------------------------------
+
+  const picker = createMonthPicker({ selected: cursor, onPick: (day) => go(view === 'year' ? 'day' : view, day) });
+
+  function toggleSource(key) {
+    if (hidden.has(key)) hidden.delete(key);
+    else hidden.add(key);
+    storageSet(HIDDEN_KEY, [...hidden]);
+    render();
+  }
+
+  function renderSide() {
+    side.hidden = !sideOpen;
+    root.classList.toggle('has-side', sideOpen);
+    if (!sideOpen) return;
+    picker.select(view === 'week' ? [startOfWeek(cursor), addDays(startOfWeek(cursor), 6)] : cursor);
+    picker.show(cursor);
+    const row = (key, label, color, hint = '') => {
+      const box = h('input', { type: 'checkbox', checked: !hidden.has(key), 'aria-label': label });
+      box.addEventListener('change', () => toggleSource(key));
+      return h('label', { class: 'cal-source', dataset: { color }, title: hint || label }, box, h('span', { class: 'cal-source-name' }, label));
+    };
+    replace(
+      side,
+      picker.el,
+      h('div', { class: 'cal-side-title' }, 'Calendars'),
+      sources.length
+        ? sources.map((source) => row(`db:${source.id}`, source.title || 'Untitled', COLORS[source.id % COLORS.length], 'Rows of this database that have a date'))
+        : h('div', { class: 'cal-side-empty' }, 'Databases with a Date property show up here.'),
+      h('div', { class: 'cal-side-title' }, 'Other'),
+      row('tasks', 'My tasks with a due date', 'task'),
+      row('holidays', 'Holidays in Bulgaria', 'holiday', 'Calculated here, not downloaded'),
+      h(
+        'div',
+        { class: 'cal-zone', title: `All times are clock times in ${TIME_ZONE}, whatever the time zone of this computer` },
+        `${TIME_ZONE} · UTC+${offsetAt(Date.now()) / 60}`,
+      ),
+    );
+  }
+
   // -- header -------------------------------------------------------------------------
 
   function renderHeader() {
-    const offset = offsetAt(Date.now());
     replace(
       header,
       h(
         'div',
         { class: 'cal-nav' },
+        h(
+          'button',
+          {
+            class: 'icon-button',
+            type: 'button',
+            title: sideOpen ? 'Hide the calendar list' : 'Show the calendar list',
+            'aria-label': sideOpen ? 'Hide the calendar list' : 'Show the calendar list',
+            'aria-pressed': String(sideOpen),
+            onclick: () => {
+              sideOpen = !sideOpen;
+              storageSet(SIDE_KEY, sideOpen);
+              render();
+            },
+          },
+          icon('sidebar', 16),
+        ),
         h('button', { class: 'button button-small', type: 'button', title: 'Today (T)', onclick: () => go(view, now().date) }, 'Today'),
         h('button', { class: 'icon-button', type: 'button', title: 'Previous (←)', 'aria-label': 'Previous', onclick: () => move(-1) }, icon('chevron-left', 16)),
         h('button', { class: 'icon-button', type: 'button', title: 'Next (→)', 'aria-label': 'Next', onclick: () => move(1) }, icon('chevron-right', 16)),
@@ -378,7 +645,12 @@ export function mountCalendar({ container, topbar }) {
       h(
         'div',
         { class: 'cal-tools' },
-        h('span', { class: 'cal-zone', title: `All times are shown for ${TIME_ZONE}` }, `${TIME_ZONE} · UTC+${offset / 60}`),
+        h(
+          'button',
+          { class: 'button button-small button-ghost', type: 'button', title: `The official holidays of ${parts(cursor).year}`, onclick: openHolidays },
+          icon('flag', 14),
+          'Holidays',
+        ),
         h(
           'div',
           { class: 'segmented', role: 'tablist', 'aria-label': 'Calendar view' },
@@ -397,7 +669,7 @@ export function mountCalendar({ container, topbar }) {
             ),
           ),
         ),
-        h('button', { class: 'button button-primary button-small', type: 'button', onclick: () => newEvent(cursor) }, 'New event'),
+        h('button', { class: 'button button-primary button-small', type: 'button', onclick: () => newEvent(cursor) }, icon('plus', 14), 'New event'),
       ),
     );
   }
@@ -405,19 +677,19 @@ export function mountCalendar({ container, topbar }) {
   // -- year ---------------------------------------------------------------------------
 
   function dayClasses(day, month) {
-    const special = holidaysOn(day);
+    const list = special(day);
     return (
       `${parts(day).month === month ? '' : ' is-outside'}${day === now().date ? ' is-today' : ''}` +
       `${isWeekend(day) ? ' is-weekend' : ''}` +
-      `${special.some((item) => item.off && item.kind !== 'compensation') ? ' is-holiday' : ''}` +
-      `${special.some((item) => item.kind === 'compensation') ? ' is-lieu' : ''}` +
-      `${special.some((item) => item.kind === 'school') ? ' is-school' : ''}`
+      `${list.some((item) => item.off && item.kind !== 'compensation') ? ' is-holiday' : ''}` +
+      `${list.some((item) => item.kind === 'compensation') ? ' is-lieu' : ''}` +
+      `${list.some((item) => item.kind === 'school') ? ' is-school' : ''}`
     );
   }
 
   function dayTitle(day) {
-    const names = holidaysOn(day).map((item) => `${item.name} — ${item.nameEn}`);
-    const count = items.filter((item) => onDay(item, day)).length;
+    const names = special(day).map((item) => `${item.name} — ${item.nameEn}`);
+    const count = onDay(day).length;
     return [`${WEEKDAYS_LONG[weekday(day) - 1]}, ${formatDate(day)}`, ...names, count ? `${count} event${count === 1 ? '' : 's'}` : null]
       .filter(Boolean)
       .join('\n');
@@ -425,6 +697,10 @@ export function mountCalendar({ container, topbar }) {
 
   function renderYear() {
     const { year } = parts(cursor);
+    const busy = new Set();
+    for (const item of visibleItems()) {
+      for (let day = dayOf(item.start) < `${year}-01-01` ? `${year}-01-01` : dayOf(item.start); day <= lastDay(item) && day <= `${year}-12-31`; day = addDays(day, 1)) busy.add(day);
+    }
     const months = MONTHS.map((name, index) => {
       const month = index + 1;
       return h(
@@ -441,12 +717,7 @@ export function mountCalendar({ container, topbar }) {
           monthWeeks(year, month).flatMap((week) => [
             h(
               'button',
-              {
-                class: 'cal-mini-week',
-                type: 'button',
-                title: `Week ${week.week} of ${week.year}`,
-                onclick: () => go('week', week.days[0]),
-              },
+              { class: 'cal-mini-week', type: 'button', title: `Week ${week.week} of ${week.year}`, onclick: () => go('week', week.days[0]) },
               String(week.week),
             ),
             ...week.days.map((day) =>
@@ -455,7 +726,7 @@ export function mountCalendar({ container, topbar }) {
                 ? h(
                     'button',
                     {
-                      class: `cal-mini-day${dayClasses(day, month)}${items.some((item) => onDay(item, day)) ? ' has-events' : ''}`,
+                      class: `cal-mini-day${dayClasses(day, month)}${busy.has(day) ? ' has-events' : ''}`,
                       type: 'button',
                       title: dayTitle(day),
                       dataset: { date: day },
@@ -469,59 +740,53 @@ export function mountCalendar({ container, topbar }) {
         ),
       );
     });
-    const { forward, back } = clockChanges(year);
-    const list = holidays(year);
     return h(
       'div',
       { class: 'cal-year' },
       h('div', { class: 'cal-year-grid' }, months),
-      h(
-        'section',
-        { class: 'cal-holidays' },
-        h('h2', null, `Official holidays ${year}`),
-        h(
-          'div',
-          { class: 'cal-legend' },
-          h('span', { class: 'cal-key is-holiday' }, 'Holiday'),
-          h('span', { class: 'cal-key is-lieu' }, 'Day off in lieu of a holiday on a weekend'),
-          h('span', { class: 'cal-key is-school' }, 'No classes (a working day)'),
-        ),
-        h(
-          'table',
-          { class: 'cal-holiday-table' },
-          h(
-            'tbody',
-            null,
-            list.map((item) =>
-              h(
-                'tr',
-                { class: `is-${item.kind}` },
-                h('td', null, h('button', { class: 'cal-link', type: 'button', onclick: () => go('day', item.date) }, formatDate(item.date))),
-                h('td', null, WEEKDAYS_LONG[weekday(item.date) - 1]),
-                h('td', null, item.name),
-                h('td', { class: 'muted' }, item.nameEn),
-              ),
-            ),
-          ),
-        ),
-        h(
-          'p',
-          { class: 'muted cal-note' },
-          `Clocks go forward on ${formatDate(forward)} (03:00 → 04:00) and back on ${formatDate(back)} (04:00 → 03:00). `,
-          `${year} has ${isoWeek(isoDate(year, 12, 28)).week} ISO weeks. `,
-          'Holidays follow the Labour Code (art. 154); days off that the government adds for a single year cannot be calculated and are not shown.',
-        ),
-      ),
+      showHolidays()
+        ? h(
+            'div',
+            { class: 'cal-legend cal-year-legend' },
+            h('span', { class: 'cal-key is-holiday' }, 'Holiday'),
+            h('span', { class: 'cal-key is-lieu' }, 'Day off in lieu'),
+            h('span', { class: 'cal-key is-school' }, 'No classes'),
+            h('span', { class: 'cal-key is-event' }, 'Has events'),
+          )
+        : null,
     );
   }
 
   // -- month --------------------------------------------------------------------------
 
+  /** Everything on one day, in a small popover ("+3 more"). */
+  function openDay(day, anchor) {
+    const list = onDay(day);
+    openPopover({
+      anchor,
+      placement: 'bottom-start',
+      className: 'cal-day-popover',
+      content: h(
+        'div',
+        { class: 'cal-day-list' },
+        h(
+          'button',
+          { class: 'cal-day-list-title', type: 'button', onclick: () => go('day', day) },
+          `${WEEKDAYS_LONG[weekday(day) - 1]}, ${formatDate(day)}`,
+        ),
+        special(day).map((item) => h('div', { class: `cal-col-holiday is-${item.kind}` }, item.name)),
+        list.map((item) => chip(item, { continued: dayOf(item.start) < day })),
+      ),
+    });
+  }
+
   function renderMonth() {
     const { year, month } = parts(cursor);
     const weeks = monthWeeks(year, month);
-    const maxChips = weeks.length > 5 ? 3 : 4;
-    return h(
+    // As many lines of events as the height of a week allows.
+    const available = Math.max(body.clientHeight - 30, 300) / weeks.length;
+    const lanes = Math.max(Math.floor((available - 30) / LANE), 2);
+    const grid = h(
       'div',
       { class: 'cal-month', style: `--weeks: ${weeks.length}` },
       h(
@@ -530,8 +795,15 @@ export function mountCalendar({ container, topbar }) {
         h('span', { class: 'cal-week-number', title: 'ISO week number' }, 'W'),
         WEEKDAYS_LONG.map((name, index) => h('span', { class: `cal-weekday${index >= 5 ? ' is-weekend' : ''}` }, name)),
       ),
-      weeks.map((week) =>
-        h(
+      weeks.map((week) => {
+        const bars = layoutBars(week.days, visibleItems());
+        // Where a day has more than fits, the last line says how many more.
+        const overflow = week.days.map((_, column) => bars.filter((bar) => bar.from <= column && bar.to >= column).length > lanes);
+        const shown = bars.filter((bar) => {
+          const crowded = overflow.slice(bar.from, bar.to + 1).some(Boolean);
+          return bar.lane < (crowded ? lanes - 1 : lanes);
+        });
+        const row = h(
           'div',
           { class: 'cal-week-row' },
           h(
@@ -539,9 +811,9 @@ export function mountCalendar({ container, topbar }) {
             { class: 'cal-week-number', type: 'button', title: `Week ${week.week} of ${week.year}`, onclick: () => go('week', week.days[0]) },
             String(week.week),
           ),
-          week.days.map((day) => {
-            const todays = items.filter((item) => onDay(item, day));
-            const special = holidaysOn(day);
+          week.days.map((day, column) => {
+            const names = special(day);
+            const more = bars.filter((bar) => bar.from <= column && bar.to >= column && !shown.includes(bar)).length;
             const cell = h(
               'div',
               { class: `cal-day${dayClasses(day, month)}`, dataset: { date: day } },
@@ -553,24 +825,49 @@ export function mountCalendar({ container, topbar }) {
                   { class: 'cal-day-number', type: 'button', title: dayTitle(day), onclick: () => go('day', day) },
                   parts(day).day === 1 ? formatDayMonth(day) : String(parts(day).day),
                 ),
-                special.length
-                  ? h('span', { class: 'cal-day-holiday', title: special.map((item) => `${item.name} — ${item.nameEn}`).join('\n') }, special.map((item) => item.name).join(' · '))
+                names.length
+                  ? h('span', { class: 'cal-day-holiday', title: names.map((item) => `${item.name} — ${item.nameEn}`).join('\n') }, names.map((item) => item.name).join(' · '))
                   : null,
               ),
-              todays.slice(0, maxChips).map((item) => chip(item, day)),
-              todays.length > maxChips
-                ? h('button', { class: 'cal-more', type: 'button', onclick: () => go('day', day) }, `+${todays.length - maxChips} more`)
+              more
+                ? h(
+                    'button',
+                    {
+                      class: 'cal-more',
+                      type: 'button',
+                      style: `top: ${30 + (lanes - 1) * LANE}px`,
+                      onclick: (event) => {
+                        event.stopPropagation();
+                        openDay(day, event.currentTarget);
+                      },
+                    },
+                    `+${more} more`,
+                  )
                 : null,
             );
             cell.addEventListener('click', (event) => {
               if (event.target === cell || event.target.classList.contains('cal-day-head')) newEvent(day);
             });
-            acceptDrops(cell, day);
             return cell;
           }),
-        ),
-      ),
+          h(
+            'div',
+            { class: 'cal-week-events' },
+            shown.map(({ item, from, to, lane, startsBefore, endsAfter }) => {
+              const el = chip(item, { continued: startsBefore, continues: endsAfter });
+              el.style.gridColumn = `${from + 1} / ${to + 2}`;
+              el.style.gridRow = String(lane + 1);
+              // Dragged by whole days from the day the bar starts on in this week.
+              el.dataset.day = week.days[from] > dayOf(item.start) ? dayOf(item.start) : week.days[from];
+              return el;
+            }),
+          ),
+        );
+        acceptDrops(row, cellUnder(row));
+        return row;
+      }),
     );
+    return grid;
   }
 
   // -- week and day ---------------------------------------------------------------------
@@ -599,30 +896,164 @@ export function mountCalendar({ container, topbar }) {
     return sorted;
   }
 
-  function renderTimeGrid(days) {
+  /**
+   * Drag a block in the time grid: its body moves it (also to another day),
+   * its lower edge changes when it ends. Steps of a quarter of an hour.
+   */
+  function dragBlock(event, el, item, grids, mode) {
+    if (event.button !== 0 || !item.can_edit || item.kind !== 'row') return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const top = parseFloat(el.style.top);
+    const height = parseFloat(el.style.height);
+    const columnWidth = grids[0].getBoundingClientRect().width;
+    let minutes = 0;
+    let days = 0;
+    let dragging = false;
+    // From the first moment: the pointer leaves a small block (or its lower
+    // edge) within a few pixels, and the block must keep hearing about it.
+    el.setPointerCapture(event.pointerId);
+    const move = (moveEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      if (!dragging && Math.hypot(dx, dy) < 5) return;
+      if (!dragging) {
+        dragging = true;
+        el.classList.add('is-dragging');
+      }
+      minutes = Math.round(((dy / HOUR) * 60) / SNAP) * SNAP;
+      if (mode === 'resize') {
+        el.style.height = `${Math.max(height + (minutes / 60) * HOUR, (SNAP / 60) * HOUR)}px`;
+      } else {
+        days = grids.length > 1 ? Math.round(dx / columnWidth) : 0;
+        el.style.top = `${top + (minutes / 60) * HOUR}px`;
+        el.style.transform = `translateX(${days * columnWidth}px)`;
+      }
+    };
+    const stop = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', stop);
+      el.removeEventListener('pointercancel', stop);
+      if (!dragging) return;
+      // The click that ends the drag must not open the event.
+      el.dataset.dragged = '1';
+      setTimeout(() => delete el.dataset.dragged, 0);
+      if (!minutes && !days) {
+        render();
+        return;
+      }
+      const end = item.end ?? shiftMoment(item.start, 0, 60);
+      if (mode === 'resize') {
+        const next = shiftMoment(end, 0, minutes);
+        saveDates(item, { start: item.start, end: next > item.start ? next : shiftMoment(item.start, 0, SNAP) });
+      } else {
+        saveDates(item, { start: shiftMoment(item.start, days, minutes), end: shiftMoment(end, days, minutes) });
+      }
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', stop);
+    el.addEventListener('pointercancel', stop);
+  }
+
+  /** Press and drag on an empty part of a day: a new event from … to. */
+  function dragNew(event, grid, day) {
+    if (event.button !== 0 || event.target !== grid) return;
+    const rect = grid.getBoundingClientRect();
+    const at = (clientY) => Math.max(0, Math.min(Math.round((((clientY - rect.top) / HOUR) * 60) / SNAP) * SNAP, 24 * 60));
+    const from = at(event.clientY);
+    let to = from;
+    const ghost = h('div', { class: 'cal-ghost' });
+    const draw = () => {
+      const first = Math.min(from, to);
+      const last = Math.max(from, to);
+      ghost.style.top = `${(first / 60) * HOUR}px`;
+      ghost.style.height = `${Math.max(((last - first) / 60) * HOUR, 2)}px`;
+      ghost.textContent = last > first ? `${clock(first)}–${clock(Math.min(last, 24 * 60 - 1))}` : '';
+    };
+    const move = (moveEvent) => {
+      to = at(moveEvent.clientY);
+      if (!ghost.isConnected) grid.append(ghost);
+      draw();
+    };
+    const stop = () => {
+      grid.removeEventListener('pointermove', move);
+      grid.removeEventListener('pointerup', stop);
+      grid.removeEventListener('pointercancel', stop);
+      ghost.remove();
+      const first = Math.min(from, to);
+      const last = Math.max(from, to);
+      if (last - first >= SNAP) newEvent(day, clock(first), clock(Math.min(last, 24 * 60 - 1)));
+      else newEvent(day, clock(Math.min(Math.floor(first / 30) * 30, 23 * 60 + 30)));
+    };
+    grid.setPointerCapture(event.pointerId);
+    grid.addEventListener('pointermove', move);
+    grid.addEventListener('pointerup', stop);
+    grid.addEventListener('pointercancel', stop);
+  }
+
+  function renderTimeGrid(days, keepScroll = false) {
     const today = now();
-    const hours = Array.from({ length: 24 }, (_, hour) => hour);
-    const columns = days.map((day) => {
-      const todays = items.filter((item) => onDay(item, day));
-      const timed = todays.filter((item) => timeOf(item.start));
-      const allDay = todays.filter((item) => !timeOf(item.start));
-      const special = holidaysOn(day);
+    const all = visibleItems();
+    const grids = [];
+    const heads = days.map((day) => {
+      const names = special(day);
       const length = hoursInDay(day);
-
-      const blocks = arrange(
-        timed.map((item) => {
-          // An event that runs past midnight is cut at the edges of the day.
-          const from = dayOf(item.start) === day ? minutesOf(timeOf(item.start)) : 0;
-          const ends = item.end ?? item.start;
-          let to = dayOf(ends) === day ? minutesOf(timeOf(ends) ?? '23:59') : 24 * 60;
-          if (to <= from) to = Math.min(from + 30, 24 * 60);
-          return { item, from, to: Math.max(to, from + 30) };
-        }),
+      return h(
+        'div',
+        { class: `cal-col-head${dayClasses(day, parts(day).month)}` },
+        h(
+          'button',
+          { class: 'cal-col-day', type: 'button', title: dayTitle(day), onclick: () => go('day', day) },
+          h('span', { class: 'cal-col-weekday' }, WEEKDAYS[weekday(day) - 1]),
+          h('span', { class: 'cal-col-date' }, formatDayMonth(day)),
+        ),
+        names.map((item) => h('div', { class: `cal-col-holiday is-${item.kind}`, title: item.nameEn }, item.name)),
+        length !== 24 ? h('div', { class: 'cal-col-dst' }, length === 23 ? 'Clocks +1 h (23-hour day)' : 'Clocks −1 h (25-hour day)') : null,
       );
+    });
 
+    // All-day and multi-day events: bars across the days they cover.
+    const bars = layoutBars(days, all.filter(isBar));
+    const lanes = Math.max(...bars.map((bar) => bar.lane + 1), 1);
+    const allDay = h(
+      'div',
+      { class: 'cal-allday', style: `--lanes: ${lanes}` },
+      days.map((day) => {
+        const cell = h('div', { class: `cal-allday-cell${isWeekend(day) ? ' is-weekend' : ''}`, dataset: { date: day } });
+        cell.addEventListener('click', () => newEvent(day));
+        return cell;
+      }),
+      h(
+        'div',
+        { class: 'cal-allday-events' },
+        bars.map(({ item, from, to, lane, startsBefore, endsAfter }) => {
+          const el = chip(item, { continued: startsBefore, continues: endsAfter });
+          el.style.gridColumn = `${from + 1} / ${to + 2}`;
+          el.style.gridRow = String(lane + 1);
+          el.dataset.day = days[from] > dayOf(item.start) ? dayOf(item.start) : days[from];
+          return el;
+        }),
+      ),
+    );
+    acceptDrops(allDay, cellUnder(allDay));
+
+    const columns = days.map((day) => {
+      const length = hoursInDay(day);
+      const blocks = arrange(
+        all
+          .filter((item) => !isBar(item) && dayOf(item.start) === day)
+          .map((item) => {
+            const from = minutesOf(timeOf(item.start));
+            const to = item.end ? minutesOf(timeOf(item.end)) : from + 60;
+            return { item, from, to: Math.max(Math.min(to, 24 * 60), from + SNAP) };
+          }),
+      );
       const grid = h(
         'div',
-        { class: `cal-grid-day${isWeekend(day) ? ' is-weekend' : ''}${special.some((item) => item.off) ? ' is-holiday' : ''}`, dataset: { date: day } },
+        {
+          class: `cal-grid-day${isWeekend(day) ? ' is-weekend' : ''}${special(day).some((item) => item.off) ? ' is-holiday' : ''}${day === today.date ? ' is-today' : ''}`,
+          dataset: { date: day },
+        },
         length !== 24
           ? h(
               'div',
@@ -635,42 +1066,35 @@ export function mountCalendar({ container, topbar }) {
             )
           : null,
         blocks.map(({ item, from, to, column, columns: total }) => {
-          const el = chip(item, day, { compact: true });
-          el.classList.add('cal-block');
+          const short = to - from <= 30;
+          const el = eventElement(item, `cal-block${short ? ' is-short' : ''}`, [
+            h('span', { class: 'cal-chip-title' }, item.title || 'Untitled'),
+            h('span', { class: 'cal-chip-time' }, `${clock(from)}–${clock(Math.min(to, 24 * 60 - 1))}`),
+          ]);
           el.style.top = `${(from / 60) * HOUR}px`;
-          el.style.height = `${Math.max(((to - from) / 60) * HOUR - 2, 20)}px`;
+          el.style.height = `${Math.max(((to - from) / 60) * HOUR - 2, 18)}px`;
           el.style.left = `calc(${(column / total) * 100}% + 2px)`;
-          el.style.width = `calc(${100 / total}% - 4px)`;
-          el.prepend(h('span', { class: 'cal-chip-time' }, `${clock(from)}–${clock(Math.min(to, 24 * 60 - 1))}`));
+          el.style.width = `calc(${100 / total}% - 5px)`;
+          el.draggable = false;
+          if (item.kind === 'row' && item.can_edit) {
+            const grip = h('span', { class: 'cal-block-grip', title: 'Drag to change the end' });
+            grip.addEventListener('pointerdown', (event) => {
+              event.stopPropagation();
+              event.preventDefault();
+              dragBlock(event, el, item, grids, 'resize');
+            });
+            el.append(grip);
+            el.addEventListener('pointerdown', (event) => dragBlock(event, el, item, grids, 'move'));
+          }
           return el;
         }),
-        day === today.date ? h('div', { class: 'cal-now', style: `top: ${(today.minutes / 60) * HOUR}px`, title: `Now: ${today.time}` }) : null,
+        day === today.date
+          ? h('div', { class: 'cal-now', style: `top: ${(today.minutes / 60) * HOUR}px`, title: `Now: ${today.time}` }, h('span', { class: 'cal-now-time' }, today.time))
+          : null,
       );
-      grid.addEventListener('click', (event) => {
-        if (event.target !== grid) return;
-        const minutes = Math.floor(((event.offsetY / HOUR) * 60) / 30) * 30;
-        newEvent(day, clock(Math.min(minutes, 23 * 60 + 30)));
-      });
-
-      const head = h(
-        'div',
-        { class: `cal-col-head${day === today.date ? ' is-today' : ''}${dayClasses(day, parts(day).month)}` },
-        h(
-          'button',
-          { class: 'cal-col-day', type: 'button', title: dayTitle(day), onclick: () => go('day', day) },
-          h('span', { class: 'cal-col-weekday' }, WEEKDAYS[weekday(day) - 1]),
-          h('span', { class: 'cal-col-date' }, formatDayMonth(day)),
-        ),
-        special.map((item) => h('div', { class: `cal-col-holiday is-${item.kind}`, title: item.nameEn }, item.name)),
-        length !== 24 ? h('div', { class: 'cal-col-dst' }, length === 23 ? 'Clocks +1 h (23-hour day)' : 'Clocks −1 h (25-hour day)') : null,
-      );
-      const lane = h('div', { class: 'cal-allday', dataset: { date: day } }, allDay.map((item) => chip(item, day)));
-      lane.addEventListener('click', (event) => {
-        if (event.target === lane) newEvent(day);
-      });
-      acceptDrops(lane, day);
-      acceptDrops(grid, day);
-      return { head, lane, grid };
+      grid.addEventListener('pointerdown', (event) => dragNew(event, grid, day));
+      grids.push(grid);
+      return grid;
     });
 
     const scroller = h(
@@ -679,25 +1103,39 @@ export function mountCalendar({ container, topbar }) {
       h(
         'div',
         { class: 'cal-time-grid', style: `--days: ${days.length}; height: ${24 * HOUR}px` },
-        h('div', { class: 'cal-hours' }, hours.map((hour) => h('span', { style: `top: ${hour * HOUR}px` }, `${pad(hour)}:00`))),
-        columns.map((column) => column.grid),
+        h(
+          'div',
+          { class: 'cal-hours' },
+          Array.from({ length: 24 }, (_, hour) =>
+            // The label of "now" takes the place of an hour label right next to it.
+            h('span', { style: `top: ${hour * HOUR}px`, hidden: days.includes(today.date) && Math.abs(hour * 60 - today.minutes) < 16 }, `${pad(hour)}:00`),
+          ),
+        ),
+        columns,
       ),
     );
-    // Open on working hours, like every calendar does.
-    requestAnimationFrame(() => {
-      const focus = days.includes(today.date) ? Math.max(today.minutes / 60 - 2, 0) : 7;
-      scroller.scrollTop = focus * HOUR;
+    // Open on the working day (or shortly before "now"); a redraw of the
+    // same view stays where it was.
+    const focus = days.includes(today.date) ? Math.max(today.minutes / 60 - 2, 0) : 7.5;
+    const target = keepScroll && timeScroll !== null ? timeScroll : focus * HOUR;
+    timeScroll = target;
+    const place = () => {
+      scroller.scrollTop = target;
+      // From now on the place is wherever the user scrolls to.
+      scroller.addEventListener('scroll', () => {
+        timeScroll = scroller.scrollTop;
+      });
+    };
+    // Before the first paint (no jump), and once more when the layout is final.
+    queueMicrotask(() => {
+      scroller.scrollTop = target;
     });
+    requestAnimationFrame(place);
     return h(
       'div',
       { class: `cal-time${days.length === 1 ? ' is-day' : ''}`, style: `--days: ${days.length}` },
-      h(
-        'div',
-        { class: 'cal-time-head' },
-        h('div', { class: 'cal-corner', title: 'ISO week number' }, `W${isoWeek(days[0]).week}`),
-        columns.map((column) => column.head),
-      ),
-      h('div', { class: 'cal-time-allday' }, h('div', { class: 'cal-corner' }, 'All day'), columns.map((column) => column.lane)),
+      h('div', { class: 'cal-time-head' }, h('div', { class: 'cal-corner', title: 'ISO week number' }, `W${isoWeek(days[0]).week}`), heads),
+      h('div', { class: 'cal-time-allday' }, h('div', { class: 'cal-corner' }, 'All day'), allDay),
       scroller,
     );
   }
@@ -706,17 +1144,21 @@ export function mountCalendar({ container, topbar }) {
 
   function render() {
     if (destroyed) return;
+    // Redrawing the same view (an event moved, a calendar hidden) keeps the place.
+    const scroll = root.dataset.view === view && shownRange === range().join('|');
+    shownRange = range().join('|');
     renderHeader();
+    renderSide();
     root.dataset.view = view;
     if (view === 'year') replace(body, renderYear());
     else if (view === 'month') replace(body, renderMonth());
-    else if (view === 'week') replace(body, renderTimeGrid(Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(cursor), index))));
-    else replace(body, renderTimeGrid([cursor]));
+    else if (view === 'week') replace(body, renderTimeGrid(Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(cursor), index)), scroll));
+    else replace(body, renderTimeGrid([cursor], scroll));
   }
 
   function onKey(event) {
     if (event.ctrlKey || event.metaKey || event.altKey || isModalOpen() || hasOpenPopover()) return;
-    if (event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    if (event.target.closest?.('input, textarea, select, [contenteditable="true"], .peek')) return;
     const found = VIEWS.find(([, , code]) => code === event.code);
     if (found) go(found[0]);
     else if (event.code === 'KeyT') go(view, now().date);
@@ -726,6 +1168,10 @@ export function mountCalendar({ container, topbar }) {
     event.preventDefault();
   }
   document.addEventListener('keydown', onKey);
+  const onResize = debounce(() => {
+    if (!destroyed && view === 'month') render();
+  }, 150);
+  window.addEventListener('resize', onResize);
   // The line for "now" (and "today") follow the clock.
   let shownToday = now().date;
   const tick = setInterval(() => {
@@ -737,8 +1183,19 @@ export function mountCalendar({ container, topbar }) {
       return;
     }
     const line = body.querySelector('.cal-now');
-    if (line) line.style.top = `${(current.minutes / 60) * HOUR}px`;
+    if (line) {
+      line.style.top = `${(current.minutes / 60) * HOUR}px`;
+      line.firstChild.textContent = current.time;
+    }
   }, 30_000);
+  const subscriptions = [
+    // An event changed on its page (in the side peek, for example).
+    on('row-updated', () => load({ force: true })),
+    on('peek', ({ closed }) => {
+      if (closed) load({ force: true });
+      else render();
+    }),
+  ];
 
   show();
   return {
@@ -746,7 +1203,9 @@ export function mountCalendar({ container, topbar }) {
     destroy() {
       destroyed = true;
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
       clearInterval(tick);
+      for (const unsubscribe of subscriptions) unsubscribe();
     },
   };
 }

@@ -13,6 +13,7 @@ import { mountCalendar } from './app/calendar.js';
 import { mountLibrary } from './app/library.js';
 import { openMoveDialog } from './app/move.js';
 import { mountPageView } from './app/page-view.js';
+import { closePeek, flushPeek, initPeek } from './app/peek.js';
 import { addLeaveGuard, navigate, pagePath, startRouter } from './app/router.js';
 import { isSearchOpen, openSearch } from './app/search.js';
 import { openShareDialog } from './app/share.js';
@@ -147,6 +148,8 @@ function showRoute(route, { force = false } = {}) {
   }
   currentRoute = route;
   closeAllPopovers();
+  // A page opened beside the old view does not belong to the new one.
+  closePeek();
   mountController?.abort();
   mountController = new AbortController();
   currentView?.destroy();
@@ -318,6 +321,8 @@ async function start() {
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keydown', onEscapeCapture, true);
   addLeaveGuard(() => currentView?.flush?.());
+  addLeaveGuard(() => flushPeek());
+  initPeek({ shell, host: root.querySelector('.main'), mount: mountPageView });
   setBeforeCreate(async () => currentView?.flush?.());
   on('tree-stale', () => refreshTree().catch(() => {}));
   startRouter(showRoute);

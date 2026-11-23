@@ -140,9 +140,19 @@ def default_schema(first_view: str = "table") -> dict[str, Any]:
                     "name": "Status",
                     "type": "status",
                     "options": [
-                        {"id": new_id("o"), "name": "Not started", "color": "gray"},
-                        {"id": new_id("o"), "name": "In progress", "color": "blue"},
-                        {"id": new_id("o"), "name": "Done", "color": "green"},
+                        {
+                            "id": new_id("o"),
+                            "name": "Not started",
+                            "color": "gray",
+                            "group": "todo",
+                        },
+                        {
+                            "id": new_id("o"),
+                            "name": "In progress",
+                            "color": "blue",
+                            "group": "in_progress",
+                        },
+                        {"id": new_id("o"), "name": "Done", "color": "green", "group": "complete"},
                     ],
                 },
                 {"id": new_id("p"), "name": "Assignee", "type": "person"},
@@ -153,7 +163,28 @@ def default_schema(first_view: str = "table") -> dict[str, Any]:
     )
 
 
-def _clean_options(raw: Any) -> list[dict[str, str]]:
+# A status belongs to one of three stages, as in Notion.
+STATUS_GROUPS = ("todo", "in_progress", "complete")
+
+
+_STAGE_WORDS = {
+    "complete": ("done", "complete", "finished", "closed", "готов", "завърш", "приключ"),
+    "in_progress": ("progress", "doing", "started", "review", "процес", "работ"),
+}
+
+
+def _guess_stage(name: str) -> str:
+    """Stage of a status that has none yet (databases made before stages existed)."""
+    lowered = name.lower()
+    if lowered.startswith("not "):
+        return "todo"
+    for stage, words in _STAGE_WORDS.items():
+        if any(word in lowered for word in words):
+            return stage
+    return "todo"
+
+
+def _clean_options(raw: Any, *, status: bool = False) -> list[dict[str, str]]:
     options: list[dict[str, str]] = []
     seen: set[str] = set()
     for item in raw if isinstance(raw, list) else []:
@@ -164,13 +195,15 @@ def _clean_options(raw: Any) -> list[dict[str, str]]:
             continue
         seen.add(option_id)
         color = item.get("color")
-        options.append(
-            {
-                "id": option_id,
-                "name": _name(item.get("name"), "Option"),
-                "color": color if color in OPTION_COLORS else "default",
-            }
-        )
+        option = {
+            "id": option_id,
+            "name": _name(item.get("name"), "Option"),
+            "color": color if color in OPTION_COLORS else "default",
+        }
+        if status:
+            group = item.get("group")
+            option["group"] = group if group in STATUS_GROUPS else _guess_stage(option["name"])
+        options.append(option)
     return options
 
 
@@ -195,7 +228,7 @@ def _clean_properties(raw: Any) -> list[dict[str, Any]]:
             "type": prop_type,
         }
         if prop_type in OPTION_TYPES:
-            prop["options"] = _clean_options(item.get("options"))
+            prop["options"] = _clean_options(item.get("options"), status=prop_type == "status")
         if prop_type == "number":
             number_format = item.get("format")
             prop["format"] = number_format if number_format in NUMBER_FORMATS else "number"
@@ -234,6 +267,8 @@ def _clean_views(raw: Any, properties: list[dict[str, Any]]) -> list[dict[str, A
 
         view["hidden"] = [prop_id for prop_id in known(item.get("hidden")) if prop_id != TITLE_ID]
         view["order"] = known(item.get("order"))
+        # Properties whose text wraps onto several lines instead of being cut.
+        view["wrap"] = known(item.get("wrap"))
 
         sorts = []
         for sort in item.get("sort") if isinstance(item.get("sort"), list) else []:
@@ -405,7 +440,9 @@ def require_database(access: Access, page_id: int, role: str = ROLE_VIEWER) -> P
 
 
 def _schema(page: Page) -> dict[str, Any]:
-    return page.db_schema if isinstance(page.db_schema, dict) else sanitize_schema(None)
+    # Cleaned on the way out as well, so a schema stored by an older version
+    # reads like a current one (statuses get their stage, views their lists).
+    return sanitize_schema(page.db_schema if isinstance(page.db_schema, dict) else None)
 
 
 def _has_content(page: Page) -> bool:
@@ -535,6 +572,41 @@ def update_schema(
             cleaned = clean_props(schema, row.props or {}, users)
             if cleaned != (row.props or {}):
                 row.props = cleaned
+    db.flush()
+    return database
+
+
+def duplicate_property(db: Session, access: Access, page_id: int, prop_id: str) -> Page:
+    """A copy of a property, with its values, right after the original."""
+    database = _editable(access, page_id)
+    schema = copy.deepcopy(_schema(database))
+    properties = schema["properties"]
+    index = next((i for i, prop in enumerate(properties) if prop["id"] == prop_id), None)
+    if index is None or properties[index]["type"] == "title":
+        raise NotFound("This property cannot be duplicated")
+    if len(properties) >= MAX_PROPERTIES:
+        raise ValidationFailed(f"A database can have at most {MAX_PROPERTIES} properties")
+    original = properties[index]
+    names = {prop["name"] for prop in properties}
+    name = next(
+        candidate
+        for candidate in (f"{original['name']} {n}" for n in range(1, MAX_PROPERTIES + 2))
+        if candidate not in names
+    )
+    clone = {**copy.deepcopy(original), "id": new_id("p"), "name": name[:100]}
+    properties.insert(index + 1, clone)
+    # Shown next to the original in every view that orders its properties.
+    for view in schema["views"]:
+        order = view.get("order") or []
+        if prop_id in order:
+            order.insert(order.index(prop_id) + 1, clone["id"])
+    database.db_schema = sanitize_schema(schema)
+    rows = db.execute(select(Page).where(Page.parent_id == database.id)).scalars()
+    for row in rows:
+        props = row.props or {}
+        if prop_id in props:
+            row.props = {**props, clone["id"]: copy.deepcopy(props[prop_id])}
+    _touch(database, access.user)
     db.flush()
     return database
 

@@ -876,3 +876,206 @@ button.db-calc-cell:hover {
     grid-template-columns: 120px minmax(0, 1fr);
   }
 }
+
+/* -- Notion-style menus ------------------------------------------------------- */
+.db-property-menu {
+  width: 260px;
+}
+.db-property-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.db-property-name[hidden] {
+  display: none;
+}
+.db-property-type {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  color: var(--text-2);
+}
+.db-property-name .input {
+  height: 30px;
+  background: var(--bg-inset);
+}
+.db-option-edit,
+.db-property-edit {
+  width: 230px;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+}
+.db-property-edit {
+  width: 250px;
+}
+.db-swatch {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--bg-active);
+  box-shadow: inset 0 0 0 1px rgba(15, 15, 15, 0.1);
+}
+.db-swatch[data-color="gray"] { background: var(--mark-gray); }
+.db-swatch[data-color="brown"] { background: var(--mark-brown); }
+.db-swatch[data-color="orange"] { background: var(--mark-orange); }
+.db-swatch[data-color="yellow"] { background: var(--mark-yellow); }
+.db-swatch[data-color="green"] { background: var(--mark-green); }
+.db-swatch[data-color="blue"] { background: var(--mark-blue); }
+.db-swatch[data-color="purple"] { background: var(--mark-purple); }
+.db-swatch[data-color="pink"] { background: var(--mark-pink); }
+.db-swatch[data-color="red"] { background: var(--mark-red); }
+.db-options-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+.db-options-head .icon-button {
+  width: 22px;
+  height: 22px;
+}
+.db-option-row {
+  gap: 4px;
+}
+.db-option-grip {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  color: var(--text-3);
+  cursor: grab;
+}
+.db-option-row[data-drop="before"] {
+  box-shadow: 0 -2px 0 var(--accent);
+}
+.db-option-row[data-drop="after"] {
+  box-shadow: 0 2px 0 var(--accent);
+}
+.db-option-group {
+  padding: 8px 8px 2px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.db-option-list .menu-separator {
+  margin: 4px -4px;
+}
+.db-option-settings {
+  color: var(--text-2);
+}
+.menu-popover .menu-heading {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+
+/* -- rows: wrapped text, the row shown in the side peek ------------------------ */
+.db-cell.is-wrapped {
+  overflow: visible;
+}
+.db-cell.is-wrapped .db-text,
+.db-cell.is-wrapped .db-url {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.db-row.is-peeked {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.db-card.is-peeked {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.row-prop-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  height: 30px;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: var(--radius-s);
+  color: var(--text-3);
+  font-size: 14px;
+  cursor: pointer;
+}
+.row-prop-add:hover {
+  background: var(--bg-hover);
+  color: var(--text-2);
+}
+
+/* -- side peek ------------------------------------------------------------------ */
+.main {
+  position: relative;
+  --peek-width: clamp(420px, 46%, 860px);
+}
+.main.has-peek > .topbar,
+.main.has-peek > .view {
+  margin-right: var(--peek-width);
+}
+.peek {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: var(--peek-width);
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: -8px 0 24px rgba(15, 15, 15, 0.06);
+  animation: peek-in 140ms var(--ease);
+}
+@keyframes peek-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+.peek-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  height: var(--topbar-height);
+  padding: 0 8px;
+}
+.peek-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+}
+/* The panel says where the page is by sitting next to it; no breadcrumbs. */
+.peek-topbar .breadcrumbs {
+  display: none;
+}
+.peek-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.peek .page {
+  padding-top: 18px;
+  --editor-gutter: 44px;
+}
+@media (max-width: 900px) {
+  .main {
+    --peek-width: 100%;
+  }
+  .main.has-peek > .topbar,
+  .main.has-peek > .view {
+    margin-right: 0;
+  }
+}

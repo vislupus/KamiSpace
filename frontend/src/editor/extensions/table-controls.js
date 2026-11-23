@@ -9,7 +9,7 @@
 //   - Enter goes to the cell below (Shift+Enter breaks the line), Tab to the
 //     next cell.
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey, Selection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import {
   CellSelection,
   TableMap,
@@ -81,8 +81,61 @@ class TableControlsView {
 
     this.onMove = (event) => this.pointerMoved(event);
     this.onLeave = () => this.scheduleHide();
+    this.onContext = (event) => this.contextMenu(event);
     this.container.addEventListener('mousemove', this.onMove);
     this.container.addEventListener('mouseleave', this.onLeave);
+    view.dom.addEventListener('contextmenu', this.onContext);
+  }
+
+  /** Right click in a cell: the row, column and table actions in one menu. */
+  contextMenu(event) {
+    const cellDom = event.target.closest?.('td, th');
+    if (!cellDom || !this.view.dom.contains(cellDom) || !this.editor.isEditable) return;
+    // A right click on a link, or on selected text, keeps the browser's own
+    // menu (open the link, copy the text).
+    if (event.target.closest('a[href]')) return;
+    const { selection } = this.view.state;
+    const at = this.view.posAtCoords({ left: event.clientX, top: event.clientY });
+    if (selection instanceof TextSelection && !selection.empty && at && at.pos >= selection.from && at.pos <= selection.to) return;
+    const found = locate(this.view, cellDom);
+    if (!found) return;
+    event.preventDefault();
+    const { map, table, start, row, column } = found;
+    const cell = start + map.map[row * map.width + column];
+    const point = new DOMRect(event.clientX, event.clientY, 0, 0);
+    this.busy = true;
+    openMenu({
+      anchor: () => point,
+      items: [
+        { label: 'Insert row above', icon: 'row-add', onSelect: () => this.run(cell, 'addRowBefore') },
+        { label: 'Insert row below', icon: 'row-add', onSelect: () => this.run(cell, 'addRowAfter') },
+        { label: 'Insert column left', icon: 'column-add', onSelect: () => this.run(cell, 'addColumnBefore') },
+        { label: 'Insert column right', icon: 'column-add', onSelect: () => this.run(cell, 'addColumnAfter') },
+        { separator: true },
+        { label: 'Clear row', icon: 'x', onSelect: () => this.clear(found, 'row', row) },
+        { label: 'Clear column', icon: 'x', onSelect: () => this.clear(found, 'column', column) },
+        { separator: true },
+        {
+          label: 'Header row',
+          icon: 'rows',
+          checked: rowIsHeader(map, table, 0),
+          onSelect: () => this.run(cell, 'toggleHeaderRow'),
+        },
+        {
+          label: 'Header column',
+          icon: 'columns',
+          checked: columnIsHeader(map, table, 0),
+          onSelect: () => this.run(cell, 'toggleHeaderColumn'),
+        },
+        { separator: true },
+        map.height > 1 ? { label: 'Delete row', icon: 'trash-2', danger: true, onSelect: () => this.run(cell, 'deleteRow') } : null,
+        map.width > 1 ? { label: 'Delete column', icon: 'trash-2', danger: true, onSelect: () => this.run(cell, 'deleteColumn') } : null,
+        { label: 'Delete table', icon: 'trash-2', danger: true, onSelect: () => this.run(cell, 'deleteTable') },
+      ],
+      onClose: () => {
+        this.busy = false;
+      },
+    });
   }
 
   // -- elements -------------------------------------------------------------------
@@ -412,6 +465,7 @@ class TableControlsView {
     clearTimeout(this.hideTimer);
     this.container.removeEventListener('mousemove', this.onMove);
     this.container.removeEventListener('mouseleave', this.onLeave);
+    this.view.dom.removeEventListener('contextmenu', this.onContext);
     for (const el of [...this.elements, this.indicator]) el.remove();
   }
 }

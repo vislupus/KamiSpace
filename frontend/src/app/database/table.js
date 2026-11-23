@@ -24,6 +24,7 @@ function side(event, element, axis = 'y') {
 export function renderTable(ctx) {
   const { view, rows, properties, canEdit } = ctx;
   const widths = { ...(view.widths ?? {}) };
+  const wrapped = new Set(view.wrap ?? []);
   const widthOf = (prop) => widths[prop.id] ?? defaultWidth(prop);
   const table = h('div', { class: 'db-table', role: 'table' });
   const applyWidths = () => {
@@ -54,6 +55,10 @@ export function renderTable(ctx) {
       if (!canEdit) return cell;
       cell.addEventListener('click', (event) => {
         if (!event.target.closest('.db-resize')) ctx.propertyMenu(prop, cell);
+      });
+      cell.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        ctx.propertyMenu(prop, cell, { at: { x: event.clientX, y: event.clientY } });
       });
       // Drag a header onto another to reorder the columns.
       cell.addEventListener('dragstart', (event) => {
@@ -127,7 +132,17 @@ export function renderTable(ctx) {
   let draggedRow = null;
   for (const row of rows) {
     const editable = canEdit && row.can_edit;
-    const line = h('div', { class: 'db-row', role: 'row', dataset: { row: row.id } });
+    const line = h('div', {
+      class: `db-row${ctx.peekedId === row.id ? ' is-peeked' : ''}`,
+      role: 'row',
+      dataset: { row: row.id },
+    });
+    // Right click: everything that can be done with the row.
+    line.addEventListener('contextmenu', (event) => {
+      if (event.target.closest('a[href], input, textarea')) return;
+      event.preventDefault();
+      ctx.rowMenu(row, line, { at: { x: event.clientX, y: event.clientY } });
+    });
 
     if (editable) {
       const handle = h(
@@ -141,17 +156,7 @@ export function renderTable(ctx) {
         },
         icon('grip', 14),
       );
-      handle.addEventListener('click', () =>
-        openMenu({
-          anchor: handle,
-          items: [
-            { label: 'Open', icon: 'external', onSelect: () => ctx.openRow(row) },
-            { label: 'Add a row below', icon: 'plus', onSelect: () => ctx.addRow({ afterId: row.id }) },
-            { separator: true },
-            { label: 'Delete', icon: 'trash-2', danger: true, onSelect: () => ctx.deleteRow(row) },
-          ],
-        }),
-      );
+      handle.addEventListener('click', () => ctx.rowMenu(row, handle));
       handle.addEventListener('dragstart', (event) => {
         draggedRow = row;
         event.dataTransfer.effectAllowed = 'move';
@@ -185,7 +190,7 @@ export function renderTable(ctx) {
       const cell = h(
         'div',
         {
-          class: `db-cell${isTitle ? ' db-cell-title' : ''}${editable ? ' is-editable' : ''}`,
+          class: `db-cell${isTitle ? ' db-cell-title' : ''}${editable ? ' is-editable' : ''}${wrapped.has(prop.id) ? ' is-wrapped' : ''}`,
           role: 'cell',
           dataset: { prop: prop.id, type: prop.type },
         },
@@ -204,7 +209,7 @@ export function renderTable(ctx) {
           {
             class: 'db-open-row',
             type: 'button',
-            title: 'Open this page',
+            title: 'Open in side peek (Ctrl+click: new tab)',
             onclick: (event) => {
               event.stopPropagation();
               ctx.openRow(row, event);
