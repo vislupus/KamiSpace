@@ -123,7 +123,15 @@ export function renderBoard(ctx) {
         });
         if (ctx.editTitleOf === row.id) setTimeout(() => card.isConnected && rename(), 0);
       }
-      card.addEventListener('click', () => ctx.openRow(row));
+      card.addEventListener('click', (event) => ctx.openRow(row, event));
+      card.addEventListener('auxclick', (event) => {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        ctx.openRow(row, event);
+      });
+      card.addEventListener('mousedown', (event) => {
+        if (event.button === 1) event.preventDefault();
+      });
       card.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && event.target === card) ctx.openRow(row);
       });

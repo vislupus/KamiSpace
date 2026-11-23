@@ -313,15 +313,14 @@ test.describe('Rich blocks', () => {
     await expect(table.locator('th').nth(1)).toHaveText('Role');
     await expect(table.locator('tr')).toHaveCount(3);
 
-    const toolbar = page.locator('.table-toolbar');
-    await expect(toolbar).toBeVisible();
-    await toolbar.getByRole('button', { name: 'Add row below' }).click();
+    // The controls only appear while the pointer is over the table.
+    await expect(page.locator('.table-add-row')).toBeHidden();
+    await table.locator('td').first().hover();
+    await page.locator('.table-add-row').click();
     await expect(table.locator('tr')).toHaveCount(4);
-    await toolbar.getByRole('button', { name: 'Add column right' }).click();
+    await table.locator('td').first().hover();
+    await page.locator('.table-add-column').click();
     await expect(table.locator('tr').first().locator('th')).toHaveCount(4);
-    await toolbar.getByRole('button', { name: 'Delete table' }).click();
-    await expect(editor(page).locator('table')).toHaveCount(0);
-    await expect(toolbar).toBeHidden();
   });
 });
 

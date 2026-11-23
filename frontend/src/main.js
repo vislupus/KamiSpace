@@ -6,23 +6,25 @@ import './styles/shell.css';
 import './styles/page.css';
 import './styles/editor.css';
 import './styles/database.css';
+import './styles/calendar.css';
 import { createPage, setBeforeCreate } from './app/actions.js';
 import { mountHome } from './app/home.js';
+import { mountCalendar } from './app/calendar.js';
 import { mountLibrary } from './app/library.js';
 import { openMoveDialog } from './app/move.js';
 import { mountPageView } from './app/page-view.js';
-import { addLeaveGuard, startRouter } from './app/router.js';
+import { addLeaveGuard, navigate, pagePath, startRouter } from './app/router.js';
 import { isSearchOpen, openSearch } from './app/search.js';
 import { openShareDialog } from './app/share.js';
 import { createSidebar } from './app/sidebar.js';
-import { loadBootstrap, on, personalWorkspace, refreshTree, store } from './app/store.js';
+import { getPage, loadBootstrap, on, personalWorkspace, refreshTree, store } from './app/store.js';
 import { mountTasks } from './app/tasks.js';
 import { mountTrash } from './app/trash.js';
 import { h, kbd, modKey, replace } from './lib/dom.js';
 import { icon } from './lib/icons.js';
 import { isModalOpen, openModal } from './lib/modal.js';
 import { closeAllPopovers, hasOpenPopover } from './lib/popover.js';
-import './lib/theme.js';
+import { setThemeChoice } from './lib/theme.js';
 import { storageGet, storageSet } from './lib/util.js';
 
 const SIDEBAR_KEY = 'kamispace.sidebar';
@@ -77,25 +79,37 @@ async function openSettings(section) {
 
 function openShortcuts() {
   const rows = [
-    ['Search pages', 'Mod+K'],
+    ['Search pages', 'Mod+K or Mod+P'],
     ['Link selected text', 'Mod+K'],
     ['New page', 'Alt+N'],
-    ['Link to a page', '@ or [['],
+    ['Open in a new tab', 'Mod+click or middle button'],
+    ['Back · Forward', 'Mod+[ · Mod+]'],
+    ['Go to the parent page', 'Mod+Shift+U'],
     ['Show / hide sidebar', 'Mod+\\'],
+    ['Light / dark', 'Mod+Shift+L'],
     ['Focus mode', 'Mod+Shift+F'],
     ['Block menu', '/'],
+    ['Link to a page', '@ or [['],
+    ['Select the block', 'Esc'],
+    ['Block above / below (block selected)', '↑ / ↓'],
+    ['Write in the selected block', 'Enter'],
+    ['Delete the selected block', 'Del or Backspace'],
+    ['Duplicate block', 'Mod+D'],
+    ['Move block up / down', 'Mod+Shift+↑ / ↓'],
+    ['Text · Heading 1 – 3', 'Mod+Shift+0 · 1 – 3'],
+    ['To-do · Bulleted · Numbered list', 'Mod+Shift+4 · 5 · 6'],
+    ['Toggle · Code · Sub-page', 'Mod+Shift+7 · 8 · 9'],
+    ['Tick a to-do item, open / close a toggle', 'Mod+Enter'],
+    ['Open / close all toggles', 'Mod+Alt+T'],
     ['Bold · Italic · Underline', 'Mod+B · I · U'],
     ['Strikethrough', 'Mod+Shift+S'],
     ['Inline code', 'Mod+E'],
     ['Highlight', 'Mod+Shift+H'],
     ['Inline equation', 'Mod+Shift+E or $$…$$'],
-    ['Toggle list', '>> + Space or Mod+Alt+7'],
-    ['Open / close a toggle', 'Mod+Enter'],
-    ['Heading 1 – 3', 'Mod+Alt+1 – 3'],
-    ['Move block up / down', 'Alt+Shift+↑ / ↓'],
-    ['Duplicate block', 'Mod+D'],
     ['Indent / outdent list item', 'Tab / Shift+Tab'],
     ['Move a block into / out of the toggle above', 'Tab / Shift+Tab'],
+    ['Table: next cell · cell below · line break', 'Tab · Enter · Shift+Enter'],
+    ['Calendar: today · year, month, week, day', 'T · Y, M, W, D'],
     ['Undo · Redo', 'Mod+Z · Mod+Shift+Z'],
   ];
   openModal({
@@ -158,6 +172,8 @@ function showRoute(route, { force = false } = {}) {
     refreshTree().catch(() => {});
   } else if (route.name === 'tasks') {
     currentView = mountTasks(context);
+  } else if (route.name === 'calendar') {
+    currentView = mountCalendar(context);
   } else {
     currentView = mountHome(context);
     // Keep "recently opened" fresh when coming back home.
@@ -167,12 +183,38 @@ function showRoute(route, { force = false } = {}) {
 
 // -- global shortcuts ---------------------------------------------------------
 
+/**
+ * Is this the key for `letter`? On a Latin layout the letter itself counts
+ * (so Dvorak and AZERTY work); on any other layout — Cyrillic, for one — the
+ * physical key does, because there the letter never arrives.
+ */
+function isLetter(event, letter) {
+  const key = event.key.length === 1 ? event.key.toLowerCase() : '';
+  if (key >= 'a' && key <= 'z') return key === letter;
+  return event.code === `Key${letter.toUpperCase()}`;
+}
+
+/** The same for a punctuation key: the character, or the key it sits on. */
+function isSymbol(event, symbol, code) {
+  return event.key === symbol || event.code === code;
+}
+
+function goToParent() {
+  const page = store.currentPageId ? getPage(store.currentPageId) : null;
+  if (page?.parent_id && getPage(page.parent_id)) navigate(pagePath(page.parent_id));
+  else navigate('/');
+}
+
+function toggleTheme() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  setThemeChoice(dark ? 'light' : 'dark');
+}
+
 function onKeyDown(event) {
   const mod = modKey(event);
-  const key = event.key.toLowerCase();
   const blocked = isModalOpen();
 
-  if (mod && !event.shiftKey && !event.altKey && key === 'k') {
+  if (mod && !event.shiftKey && !event.altKey && (isLetter(event, 'k') || isLetter(event, 'p'))) {
     // The editor claims Mod+K itself when there is text to link.
     if (event.defaultPrevented) return;
     event.preventDefault();
@@ -180,15 +222,29 @@ function onKeyDown(event) {
     return;
   }
   if (blocked) return;
-  if (mod && !event.shiftKey && !event.altKey && event.key === '\\') {
+  const plain = mod && !event.shiftKey && !event.altKey;
+  const shifted = mod && event.shiftKey && !event.altKey;
+  if (plain && isSymbol(event, '\\', 'Backslash')) {
     event.preventDefault();
     toggleSidebar();
-  } else if (mod && event.shiftKey && key === 'f') {
+  } else if (shifted && isLetter(event, 'f')) {
     event.preventDefault();
     toggleFocusMode();
-  } else if (mod && event.key === '/') {
+  } else if (shifted && isLetter(event, 'l')) {
+    event.preventDefault();
+    toggleTheme();
+  } else if (shifted && isLetter(event, 'u')) {
+    event.preventDefault();
+    goToParent();
+  } else if (plain && isSymbol(event, '/', 'Slash')) {
     event.preventDefault();
     openShortcuts();
+  } else if (plain && isSymbol(event, '[', 'BracketLeft')) {
+    event.preventDefault();
+    history.back();
+  } else if (plain && isSymbol(event, ']', 'BracketRight')) {
+    event.preventDefault();
+    history.forward();
   } else if (event.altKey && !event.shiftKey && !mod && event.code === 'KeyN') {
     event.preventDefault();
     newPage();

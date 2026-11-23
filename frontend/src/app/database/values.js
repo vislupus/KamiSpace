@@ -1,6 +1,8 @@
 // Property types of a database: how a value is shown, edited, compared,
 // filtered and summed up. Shared by the table, the board and the property
 // list at the top of a row's page.
+import { addDays, formatDateTime, parseTime } from '../../lib/bgcalendar.js';
+import { createMonthPicker, dateInput, timeInput } from '../../lib/datepicker.js';
 import { h } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 import { openMenu } from '../../lib/menu.js';
@@ -48,14 +50,8 @@ export function isEmpty(value) {
   return value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length);
 }
 
-export function formatDate(iso) {
-  const [year, month, day] = iso.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
+/** "23.11.2026", or "23.11.2026 14:30" for a date with a time. */
+export const formatDate = formatDateTime;
 
 function formatNumber(value) {
   return Number(value).toLocaleString(undefined, { maximumFractionDigits: 6 });
@@ -438,30 +434,82 @@ function editOptions(prop, value, anchor, { onChange, onProperty }) {
 
 function editDate(prop, value, anchor, onChange) {
   let current = value ? { ...value } : null;
-  const start = h('input', { class: 'input', type: 'date', value: current?.start ?? '', 'aria-label': 'Start date' });
-  const end = h('input', { class: 'input', type: 'date', value: current?.end ?? '', 'aria-label': 'End date' });
-  const endRow = h('label', { class: 'db-date-row' }, h('span', null, 'End'), end);
-  const hasEnd = h('input', { type: 'checkbox', checked: Boolean(current?.end) });
-  endRow.hidden = !hasEnd.checked;
+  let withTime = Boolean(current?.start && current.start.length > 10);
+  let withEnd = Boolean(current?.end);
+  let active = 'start';
+  const day = (moment) => (moment ? moment.slice(0, 10) : null);
+  const clock = (moment) => (moment && moment.length > 10 ? moment.slice(11, 16) : null);
+  const later = (time) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours >= 23 ? '23:59' : parseTime(`${hours + 1}:${String(minutes).padStart(2, '0')}`);
+  };
+
   const apply = () => {
-    const next = start.value
-      ? { start: start.value, ...(hasEnd.checked && end.value > start.value ? { end: end.value } : {}) }
-      : null;
+    let next = null;
+    if (startDate.value) {
+      const start = withTime ? `${startDate.value}T${startTime.value ?? '09:00'}` : startDate.value;
+      next = { start };
+      if (withEnd && endDate.value) {
+        const end = withTime ? `${endDate.value}T${endTime.value ?? later(start.slice(11))}` : endDate.value;
+        if (end > start) next.end = end;
+      }
+    }
+    picker.select(next ? [day(next.start), day(next.end) ?? day(next.start)] : null);
     if (JSON.stringify(next) !== JSON.stringify(current)) {
       current = next;
       onChange(next);
     }
   };
-  start.addEventListener('change', apply);
-  end.addEventListener('change', apply);
+
+  const startDate = dateInput({ value: day(current?.start), label: 'Start date', onChange: apply, onFocus: () => (active = 'start') });
+  const endDate = dateInput({ value: day(current?.end), label: 'End date', onChange: apply, onFocus: () => (active = 'end') });
+  const startTime = timeInput({ value: clock(current?.start), label: 'Start time', onChange: apply });
+  const endTime = timeInput({ value: clock(current?.end), label: 'End time', onChange: apply });
+  const endRow = h('div', { class: 'db-date-fields' }, endDate.el, endTime.el);
+  const picker = createMonthPicker({
+    selected: current ? [day(current.start), day(current.end) ?? day(current.start)] : null,
+    onPick: (picked) => {
+      if (active === 'end' && withEnd && startDate.value && picked >= startDate.value) {
+        endDate.set(picked);
+      } else {
+        // Moving the start keeps the length of a range.
+        if (withEnd && endDate.value && startDate.value) {
+          const length = Math.round((Date.parse(endDate.value) - Date.parse(startDate.value)) / 86_400_000);
+          endDate.set(addDays(picked, Math.max(length, 0)));
+        }
+        startDate.set(picked);
+        if (withEnd) active = 'end';
+      }
+      apply();
+    },
+  });
+  const hasEnd = h('input', { type: 'checkbox', checked: withEnd });
+  const hasTime = h('input', { type: 'checkbox', checked: withTime });
+  const layout = () => {
+    endRow.hidden = !withEnd;
+    startTime.el.hidden = !withTime;
+    endTime.el.hidden = !withTime;
+  };
   hasEnd.addEventListener('change', () => {
-    endRow.hidden = !hasEnd.checked;
+    withEnd = hasEnd.checked;
+    if (withEnd && !endDate.value && startDate.value) {
+      endDate.set(withTime ? startDate.value : addDays(startDate.value, 1));
+      if (withTime) endTime.set(later(startTime.value ?? '09:00'));
+    }
+    active = withEnd ? 'end' : 'start';
+    layout();
     apply();
   });
-  const today = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  };
+  hasTime.addEventListener('change', () => {
+    withTime = hasTime.checked;
+    if (withTime && !startTime.value) {
+      startTime.set('09:00');
+      if (withEnd) endTime.set('10:00');
+    }
+    layout();
+    apply();
+  });
+  layout();
   const popover = openPopover({
     anchor,
     placement: 'bottom-start',
@@ -471,9 +519,11 @@ function editDate(prop, value, anchor, onChange) {
     content: h(
       'div',
       { class: 'db-date-editor' },
-      h('label', { class: 'db-date-row' }, h('span', null, 'Date'), start),
+      h('div', { class: 'db-date-fields' }, startDate.el, startTime.el),
       endRow,
+      picker.el,
       h('label', { class: 'checkbox' }, hasEnd, 'End date'),
+      h('label', { class: 'checkbox' }, hasTime, 'Include time'),
       h(
         'div',
         { class: 'due-shortcuts' },
@@ -483,19 +533,8 @@ function editDate(prop, value, anchor, onChange) {
             class: 'button button-small',
             type: 'button',
             onclick: () => {
-              start.value = today();
-              apply();
-            },
-          },
-          'Today',
-        ),
-        h(
-          'button',
-          {
-            class: 'button button-small',
-            type: 'button',
-            onclick: () => {
-              start.value = '';
+              startDate.set(null);
+              endDate.set(null);
               apply();
               popover.close();
             },
@@ -505,7 +544,7 @@ function editDate(prop, value, anchor, onChange) {
       ),
     ),
   });
-  start.focus();
+  startDate.el.focus();
 }
 
 function editPeople(prop, value, anchor, onChange) {
@@ -707,9 +746,10 @@ export function matchesFilter(row, prop, rule) {
     }
     case 'date': {
       if (isEmpty(value)) return false;
-      if (rule.op === 'before') return value.start < wanted;
-      if (rule.op === 'after') return value.start > wanted;
-      return value.start === wanted;
+      const day = value.start.slice(0, 10);
+      if (rule.op === 'before') return day < wanted;
+      if (rule.op === 'after') return day > wanted;
+      return day === wanted;
     }
     default: {
       const text = textOf(prop, value).toLowerCase();

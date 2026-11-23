@@ -241,4 +241,8 @@ frontend/playwright-report/
 # Node.js. The generic "dist/" rule above would otherwise hide it.
 !/static/dist/
 
+# The frontend keeps its helpers in frontend/src/lib. The generic "lib/" rule
+# above (meant for Python build output) must not hide that source code.
+!/frontend/src/lib/
+
 *.md

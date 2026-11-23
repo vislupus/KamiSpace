@@ -403,8 +403,16 @@ class BlockHandleView {
       : [];
 
     this.menuOpen = true;
+    this.view.dom.classList.add('has-block-menu');
     this.grip.setAttribute('aria-expanded', 'true');
-    openMenu({
+    // The block the menu belongs to is shown as selected, as in Notion.
+    try {
+      const { state } = this.view;
+      this.view.dispatch(state.tr.setSelection(NodeSelection.create(state.doc, pos)));
+    } catch {
+      // Not every block can be selected as a node; the menu works regardless.
+    }
+    const menu = openMenu({
       anchor: this.grip,
       placement: 'bottom-start',
       items: [
@@ -435,14 +443,26 @@ class BlockHandleView {
           label: 'Delete',
           icon: 'trash-2',
           danger: true,
+          hint: 'Del',
           onSelect: () => deleteBlock(editor, pos),
         },
       ],
       onClose: () => {
         this.menuOpen = false;
+        this.view.dom.classList.remove('has-block-menu');
         this.grip.removeAttribute('aria-expanded');
         this.hide();
       },
+    });
+    // With the menu open the usual keys still act on the block.
+    menu.el.addEventListener('keydown', (event) => {
+      const duplicate = (event.ctrlKey || event.metaKey) && event.code === 'KeyD';
+      if (event.key !== 'Delete' && event.key !== 'Backspace' && !duplicate) return;
+      event.preventDefault();
+      event.stopPropagation();
+      menu.close();
+      if (duplicate) duplicateBlock(editor, pos);
+      else deleteBlock(editor, pos);
     });
   }
 

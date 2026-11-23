@@ -156,6 +156,41 @@ export async function movePage(pageId, destination) {
   }
 }
 
+/** Middle button, or a click with Ctrl / ⌘ held: "open in a new tab". */
+export function wantsNewTab(event) {
+  return Boolean(event && (event.button === 1 || event.ctrlKey || event.metaKey));
+}
+
+/** Open a page here, or in a new browser tab when the event asks for that. */
+export function openPage(pageId, event = null) {
+  if (wantsNewTab(event)) {
+    window.open(pagePath(pageId), '_blank', 'noopener');
+    return Promise.resolve();
+  }
+  return navigate(pagePath(pageId));
+}
+
+/**
+ * Make an element that is not a real link open a page like one: click,
+ * Ctrl/⌘+click and the middle mouse button.
+ */
+export function bindPageOpen(element, pageId, { before } = {}) {
+  const open = (event) => {
+    before?.(event);
+    openPage(typeof pageId === 'function' ? pageId() : pageId, event);
+  };
+  element.addEventListener('click', open);
+  element.addEventListener('auxclick', (event) => {
+    if (event.button !== 1) return;
+    event.preventDefault();
+    open(event);
+  });
+  // The middle button would otherwise start auto-scrolling (or paste, on Linux).
+  element.addEventListener('mousedown', (event) => {
+    if (event.button === 1) event.preventDefault();
+  });
+}
+
 export function pageUrl(pageId) {
   return `${location.origin}${pagePath(pageId)}`;
 }

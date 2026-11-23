@@ -92,6 +92,7 @@ def register_page(request: Request, session: OptionalSession) -> Response:
 @router.get("/trash", response_class=HTMLResponse)
 @router.get("/library", response_class=HTMLResponse)
 @router.get("/tasks", response_class=HTMLResponse)
+@router.get("/calendar", response_class=HTMLResponse)
 def app_shell(request: Request, session: OptionalSession) -> Response:
     if session is None:
         target = request.url.path

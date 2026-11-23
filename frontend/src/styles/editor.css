@@ -533,6 +533,17 @@ button.callout-icon:disabled {
 .is-block-dragging .doc > .ProseMirror-selectednode:not(.callout, .code-block, .embed, .bookmark, .image-block) {
   background-color: var(--block-selection);
 }
+/* A selected block (Esc, or its menu) anywhere: in a toggle, a column, a list. */
+.ProseMirror-focused.doc :is(p, h1, h2, h3, li, blockquote, div[data-type="details"]).ProseMirror-selectednode,
+.doc.has-block-menu .ProseMirror-selectednode:not(.image-block) {
+  outline: 0;
+  border-radius: 4px;
+  box-shadow: 0 0 0 3px var(--block-selection);
+  background-color: var(--block-selection);
+}
+.doc.has-block-menu .image-block.ProseMirror-selectednode .image-frame::after {
+  opacity: 1;
+}
 .ProseMirror-focused .image-block.ProseMirror-selectednode,
 .is-block-dragging .doc > .image-block.ProseMirror-selectednode {
   box-shadow: none;
@@ -563,39 +574,66 @@ button.callout-icon:disabled {
 /* ---- Tables ------------------------------------------------------------ */
 .doc .tableWrapper {
   overflow-x: auto;
-  padding-bottom: 2px;
+  /* Room for the frame of the cell with the caret at the edges of the table,
+     and below it for the bar that adds a row. */
+  padding: 1px 1px 18px;
 }
 .doc table {
   width: 100%;
+  margin: 0;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 0.94em;
+  font-size: 0.875em;
+  line-height: 1.5;
 }
 .doc td,
 .doc th {
   position: relative;
-  min-width: 72px;
-  padding: 6px 10px;
-  border: 1px solid var(--border-strong);
+  min-width: 96px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
   vertical-align: top;
   text-align: left;
+  font-weight: inherit;
+}
+[data-theme="dark"] .doc td,
+[data-theme="dark"] .doc th {
+  border-color: var(--border-strong);
 }
 .doc th {
-  background: var(--bg-inset);
-  font-weight: 600;
+  background: var(--bg-sidebar);
+  font-weight: 500;
 }
+.doc td > * + *,
+.doc th > * + * {
+  margin-top: 0.25em;
+}
+/* Table cells stay clean: a hint in every narrow cell is only noise. */
+.doc td .is-empty::before,
+.doc th .is-empty::before {
+  content: none;
+}
+/* The cell being written in, as in Notion. */
+.doc .is-current-cell::after,
 .doc .selectedCell::after {
   content: "";
   position: absolute;
-  inset: 0;
-  background: var(--accent-soft);
+  inset: -1px;
+  z-index: 1;
+  border: 2px solid var(--accent);
+  border-radius: 1px;
   pointer-events: none;
+}
+.doc .selectedCell::after {
+  border-width: 1px;
+  background: var(--block-selection);
 }
 .doc .column-resize-handle {
   position: absolute;
-  top: 0;
+  top: -1px;
   right: -2px;
   bottom: -1px;
+  z-index: 2;
   width: 3px;
   background: var(--accent);
   pointer-events: none;
@@ -603,15 +641,74 @@ button.callout-icon:disabled {
 .doc.resize-cursor {
   cursor: col-resize;
 }
-.table-toolbar {
+.table-handle,
+.table-add {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  color: var(--text-3);
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+.table-handle[hidden],
+.table-add[hidden],
+.table-move-line[hidden] {
+  display: none;
+}
+.table-handle {
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+.table-handle-column {
+  width: 26px;
+  height: 14px;
+  cursor: grab;
+}
+.table-handle-row {
+  width: 14px;
+  height: 26px;
+  cursor: grab;
+}
+.table-handle-row .icon {
+  transform: rotate(90deg);
+}
+.table-handle:hover,
+.table-handle.is-active {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  color: var(--accent-contrast);
+}
+.table-add {
+  border-radius: 4px;
+  background: var(--bg-inset);
+  opacity: 0.75;
+  transition: background var(--fast), opacity var(--fast);
+}
+.table-add-column {
+  width: 18px;
+  cursor: col-resize;
+}
+.table-add-row {
+  height: 15px;
+  cursor: row-resize;
+}
+.table-add:hover,
+.table-add.is-active {
+  background: var(--bg-active);
+  color: var(--text);
+  opacity: 1;
+}
+.table-move-line {
   position: absolute;
   z-index: 5;
-  display: flex;
-  gap: 1px;
-  padding: 3px;
-  border-radius: var(--radius-l);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-pop);
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
 }
 
 /* ---- Placeholders and ProseMirror plumbing ----------------------------- */

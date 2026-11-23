@@ -3,6 +3,8 @@
 // an item from outside the editor.
 import { TaskItem } from '@tiptap/extension-list';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { formatDate, now } from '../../lib/bgcalendar.js';
+import { createMonthPicker, dateInput } from '../../lib/datepicker.js';
 import { h } from '../../lib/dom.js';
 import { icon } from '../../lib/icons.js';
 import { openMenu } from '../../lib/menu.js';
@@ -17,23 +19,10 @@ function newTaskId() {
   return Array.from(bytes, (byte) => ID_ALPHABET[byte % ID_ALPHABET.length]).join('');
 }
 
-function todayIso() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
-}
+const todayIso = () => now().date;
 
-export function formatDue(due) {
-  const [year, month, day] = due.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
-  const sameYear = year === new Date().getFullYear();
-  return date.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: sameYear ? undefined : 'numeric',
-  });
-}
+/** "23.11.2026" */
+export const formatDue = formatDate;
 
 function plainAttribute(name, dataName, { parse = (value) => value, keepOnSplit = false } = {}) {
   return {
@@ -175,17 +164,12 @@ export const AssignableTaskItem = TaskItem.extend({
       };
 
       const pickDue = (anchor) => {
-        const input = h('input', {
-          class: 'input',
-          type: 'date',
-          value: current.attrs.due ?? '',
-          'aria-label': 'Due date',
-        });
         const apply = (value) => {
           popover.close();
           setAttributes({ due: value || null });
         };
-        input.addEventListener('change', () => apply(input.value));
+        const field = dateInput({ value: current.attrs.due, label: 'Due date', onChange: apply });
+        const picker = createMonthPicker({ selected: current.attrs.due, onPick: apply });
         const popover = openPopover({
           anchor,
           placement: 'bottom-end',
@@ -193,7 +177,8 @@ export const AssignableTaskItem = TaskItem.extend({
           content: h(
             'div',
             { class: 'due-editor' },
-            input,
+            field.el,
+            picker.el,
             h(
               'div',
               { class: 'due-shortcuts' },
@@ -204,7 +189,7 @@ export const AssignableTaskItem = TaskItem.extend({
             ),
           ),
         });
-        input.focus();
+        field.el.focus();
       };
 
       const render = () => {

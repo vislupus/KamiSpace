@@ -69,6 +69,15 @@ plus the FTS5 table `pages_fts`. The schema is created by Alembic
   property re-checks the values of all rows. Filtering, sorting, grouping and
   calculations happen in the browser (`frontend/src/app/database/`), on the
   rows the server already decided the user may see.
+- **Calendar.** `frontend/src/lib/bgcalendar.js` is the single place for date
+  arithmetic: ISO weeks, month grids, Orthodox Easter, the official holidays
+  with their days in lieu, the Europe/Sofia clock changes, and the DD.MM.YYYY
+  / 24-hour formats. It is pure (no DOM, no network, no `Date` in local time)
+  and tested with `node --test` against the time zone database. Dates are
+  plain strings — `YYYY-MM-DD`, or `YYYY-MM-DDTHH:MM` for a clock time in
+  Sofia — so nothing depends on the time zone of the browser or the server.
+  `GET /api/calendar?start&end` returns the dated rows of the databases the
+  user may see and their due tasks; holidays never touch the server.
 - **Page links** store the id of the page they point to. Titles and icons are
   looked up when a link is shown, so links never go stale and a reader only
   ever sees the titles of pages they may open. Creating a sub-page appends a

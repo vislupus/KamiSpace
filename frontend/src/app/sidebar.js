@@ -5,6 +5,7 @@ import { logoMark } from '../lib/logo.js';
 import { openMenu } from '../lib/menu.js';
 import { getThemeChoice, setThemeChoice } from '../lib/theme.js';
 import {
+  bindPageOpen,
   copyPageLink,
   createPage,
   duplicatePage,
@@ -13,6 +14,7 @@ import {
   signOut,
   toggleFavorite,
   trashPage,
+  wantsNewTab,
 } from './actions.js';
 import { navigate, pagePath, parseRoute } from './router.js';
 import {
@@ -106,6 +108,12 @@ export function createSidebar({
     'My tasks',
     tasksBadge,
   );
+  const calendarLink = h(
+    'a',
+    { class: 'side-action', href: '/calendar', dataset: { link: '' } },
+    icon('calendar', 16),
+    'Calendar',
+  );
   const trashLink = h(
     'a',
     { class: 'side-action', href: '/trash', dataset: { link: '' } },
@@ -152,6 +160,7 @@ export function createSidebar({
       homeLink,
       libraryLink,
       tasksLink,
+      calendarLink,
     ),
     scroll,
     h(
@@ -302,9 +311,10 @@ export function createSidebar({
       event.stopPropagation();
       createPage({ parentId: page.id });
     });
-    row.addEventListener('click', () => {
-      onOpenPage?.(page.id);
-      navigate(pagePath(page.id));
+    bindPageOpen(row, page.id, {
+      before: (event) => {
+        if (!wantsNewTab(event)) onOpenPage?.(page.id);
+      },
     });
     row.addEventListener('contextmenu', (event) => {
       event.preventDefault();
@@ -461,6 +471,7 @@ export function createSidebar({
     trashLink.classList.toggle('is-active', route.name === 'trash');
     libraryLink.classList.toggle('is-active', route.name === 'library');
     tasksLink.classList.toggle('is-active', route.name === 'tasks');
+    calendarLink.classList.toggle('is-active', route.name === 'calendar');
     tasksBadge.hidden = !store.openTasks;
     tasksBadge.textContent = String(store.openTasks);
     const scrollTop = scroll.scrollTop;

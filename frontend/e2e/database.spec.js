@@ -88,9 +88,10 @@ test.describe('Inline database', () => {
     await expect(cell(1, 'status').locator('.db-pill')).toHaveText('Blocked');
 
     await cell(0, 'date').click();
-    await page.locator('.db-date-editor input[type="date"]').first().fill('2026-11-20');
+    await page.locator('.db-date-editor input[aria-label="Start date"]').fill('20.11.2026');
+    await page.keyboard.press('Enter');
     await page.keyboard.press('Escape');
-    await expect(cell(0, 'date')).toContainText('2026');
+    await expect(cell(0, 'date')).toHaveText('20.11.2026');
 
     await cell(0, 'person').click();
     await page.locator('.db-option', { hasText: 'alice' }).click();
