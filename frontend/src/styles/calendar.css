@@ -482,7 +482,7 @@ button.cal-week-number:hover {
 }
 /* Days of the neighbouring months: a grey so light it is barely there. */
 .cal-day.is-outside {
-  background: color-mix(in srgb, var(--text) 2.5%, transparent);
+  background: color-mix(in srgb, var(--text) 1.5%, transparent);
 }
 .cal-day.is-drop-target,
 .cal-allday-cell.is-drop-target {
