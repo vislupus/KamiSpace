@@ -18,7 +18,7 @@ import secrets
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import utcnow
@@ -26,7 +26,7 @@ from app.errors import Locked, NotFound, ValidationFailed
 from app.models import ROLE_EDITOR, ROLE_VIEWER, Page, User
 from app.services import pages, search
 from app.services.document import is_safe_url
-from app.services.permissions import Access, role_at_least
+from app.services.permissions import Access, PageNode, role_at_least
 
 KIND_DATABASE = "database"
 
@@ -41,6 +41,9 @@ PROPERTY_TYPES = {
     "person",
     "checkbox",
     "url",
+    # Calculated in the browser from the other values of the row; a formula
+    # never has a stored value.
+    "formula",
 }
 OPTION_TYPES = {"select", "multi_select", "status"}
 OPTION_COLORS = {
@@ -78,7 +81,10 @@ MAX_PROPERTIES = 50
 MAX_OPTIONS = 100
 MAX_VIEWS = 20
 MAX_ROWS = 5000
+MAX_FORMULA = 1000
 TITLE_ID = "title"
+# The colour of a row lives next to its values, under a key no property can have.
+COLOR_KEY = "$color"
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,24}$")
 _MOMENT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$")
@@ -118,6 +124,11 @@ def _is_number(value: Any) -> bool:
 
 def _clean_id(value: Any) -> str | None:
     return value if isinstance(value, str) and _ID_RE.match(value) else None
+
+
+def clean_color(value: Any) -> str | None:
+    """A colour of the palette, or None for "no colour of its own"."""
+    return value if value in OPTION_COLORS and value != "default" else None
 
 
 # -- schema -------------------------------------------------------------------
@@ -229,9 +240,15 @@ def _clean_properties(raw: Any) -> list[dict[str, Any]]:
         }
         if prop_type in OPTION_TYPES:
             prop["options"] = _clean_options(item.get("options"), status=prop_type == "status")
-        if prop_type == "number":
+        if prop_type in ("number", "formula"):
             number_format = item.get("format")
             prop["format"] = number_format if number_format in NUMBER_FORMATS else "number"
+        if prop_type == "formula":
+            # Text only: it is parsed and calculated in the browser, never here.
+            expression = item.get("expression")
+            prop["expression"] = (
+                expression.strip()[:MAX_FORMULA] if isinstance(expression, str) else ""
+            )
         if prop_type == "title":
             title = prop
         properties.append(prop)
@@ -335,7 +352,15 @@ def _clean_views(raw: Any, properties: list[dict[str, Any]]) -> list[dict[str, A
 def sanitize_schema(raw: Any) -> dict[str, Any]:
     raw = raw if isinstance(raw, dict) else {}
     properties = _clean_properties(raw.get("properties"))
-    return {"properties": properties, "views": _clean_views(raw.get("views"), properties)}
+    schema: dict[str, Any] = {
+        "properties": properties,
+        "views": _clean_views(raw.get("views"), properties),
+    }
+    # The colour of the database's entries in the calendar.
+    color = clean_color(raw.get("color"))
+    if color:
+        schema["color"] = color
+    return schema
 
 
 # -- values --------------------------------------------------------------------
@@ -407,26 +432,60 @@ def _clean_value(prop: dict[str, Any], value: Any, users: set[int]) -> Any:
     return None
 
 
-def _user_ids(db: Session) -> set[int]:
-    return set(db.execute(select(User.id)).scalars())
+class _Users:
+    """The ids of all accounts, read only when a person value is checked."""
+
+    def __init__(self, db: Session) -> None:
+        self._db = db
+        self._ids: set[int] | None = None
+
+    def __contains__(self, user_id: object) -> bool:
+        if self._ids is None:
+            self._ids = set(self._db.execute(select(User.id)).scalars())
+        return user_id in self._ids
+
+
+def _user_ids(db: Session) -> _Users:
+    return _Users(db)
 
 
 def clean_props(
-    schema: dict[str, Any], props: Any, users: set[int], *, base: dict[str, Any] | None = None
+    schema: dict[str, Any],
+    props: Any,
+    users: _Users | set[int],
+    *,
+    base: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Property values checked against the schema. ``props`` updates ``base``."""
+    """Property values checked against the schema. ``props`` updates ``base``.
+
+    The colour of the row (``COLOR_KEY``) is kept as it is in ``base``; it is
+    changed through ``set_row_color`` only.
+    """
     result = dict(base or {})
     by_id = {prop["id"]: prop for prop in schema["properties"]}
     for prop_id, value in (props if isinstance(props, dict) else {}).items():
         prop = by_id.get(prop_id)
-        if prop is None or prop["type"] == "title":
+        if prop is None or prop["type"] in ("title", "formula"):
             continue
         cleaned = _clean_value(prop, value, users)
         if cleaned is None:
             result.pop(prop_id, None)
         else:
             result[prop_id] = cleaned
-    return {prop_id: value for prop_id, value in result.items() if prop_id in by_id}
+    cleaned_props = {
+        prop_id: value
+        for prop_id, value in result.items()
+        if prop_id in by_id and by_id[prop_id]["type"] != "formula"
+    }
+    color = clean_color(result.get(COLOR_KEY))
+    if color:
+        cleaned_props[COLOR_KEY] = color
+    return cleaned_props
+
+
+def row_values(props: dict[str, Any] | None) -> dict[str, Any]:
+    """The property values of a row, without what is kept beside them."""
+    return {key: value for key, value in (props or {}).items() if key != COLOR_KEY}
 
 
 # -- reading --------------------------------------------------------------------
@@ -455,7 +514,8 @@ def serialize_row(page: Page, role: str | None) -> dict[str, Any]:
         "id": page.id,
         "title": page.title,
         "icon": page.icon,
-        "props": page.props or {},
+        "props": row_values(page.props),
+        "color": clean_color((page.props or {}).get(COLOR_KEY)),
         "position": page.position,
         "has_content": _has_content(page),
         "can_edit": role_at_least(role, ROLE_EDITOR) and not page.locked,
@@ -464,31 +524,79 @@ def serialize_row(page: Page, role: str | None) -> dict[str, Any]:
     }
 
 
-def _rows(db: Session, access: Access, database: Page) -> list[Page]:
+def _rows(db: Session, access: Access, database: Page) -> list[dict[str, Any]]:
+    """The rows of a database the user may see, ready to be sent.
+
+    Only what the table shows is read. The text of the pages stays in the
+    database: whether a row has any is worked out there, in the same query.
+    """
+    has_content = or_(
+        func.json_array_length(Page.content, "$.content") > 1,
+        func.json_extract(Page.content, "$.content[0].content").is_not(None),
+    )
     rows = db.execute(
-        select(Page)
+        select(
+            Page.id,
+            Page.parent_id,
+            Page.workspace_id,
+            Page.owner_id,
+            Page.title,
+            Page.icon,
+            Page.props,
+            Page.position,
+            Page.locked,
+            Page.created_at,
+            Page.updated_at,
+            has_content.label("has_content"),
+        )
         .where(Page.parent_id == database.id, Page.deleted_at.is_(None))
         .order_by(Page.position, Page.id)
-    ).scalars()
-    return [row for row in rows if access.can_view(row.id)]
+    ).all()
+    # Every row has the same ancestors: with the rows known to the resolver,
+    # their access is worked out without one query per row.
+    access.prime([PageNode(row.id, row.parent_id, row.workspace_id, row.owner_id) for row in rows])
+    result = []
+    for row in rows:
+        role = access.page_role(row.id)
+        if role is None:
+            continue
+        props = row.props or {}
+        result.append(
+            {
+                "id": row.id,
+                "title": row.title,
+                "icon": row.icon,
+                "props": row_values(props),
+                "color": clean_color(props.get(COLOR_KEY)),
+                "position": row.position,
+                "has_content": bool(row.has_content),
+                "can_edit": role_at_least(role, ROLE_EDITOR) and not row.locked,
+                "created_at": row.created_at.isoformat(),
+                "updated_at": row.updated_at.isoformat(),
+            }
+        )
+    return result
 
 
-def detail(db: Session, access: Access, database: Page) -> dict[str, Any]:
+def detail(
+    db: Session, access: Access, database: Page, *, with_rows: bool = True
+) -> dict[str, Any]:
     role = access.page_role(database.id)
     schema = _schema(database)
-    return {
+    result = {
         "id": database.id,
         "title": database.title,
         "icon": database.icon,
         "parent_id": database.parent_id if access.can_view(database.parent_id or 0) else None,
         "can_edit": role_at_least(role, ROLE_EDITOR) and not database.locked,
         "locked": database.locked,
+        "color": schema.get("color"),
         "properties": schema["properties"],
         "views": schema["views"],
-        "rows": [
-            serialize_row(row, access.page_role(row.id)) for row in _rows(db, access, database)
-        ],
     }
+    if with_rows:
+        result["rows"] = _rows(db, access, database)
+    return result
 
 
 def row_context(db: Session, access: Access, page: Page) -> dict[str, Any] | None:
@@ -502,7 +610,8 @@ def row_context(db: Session, access: Access, page: Page) -> dict[str, Any] | Non
         "database_id": parent.id,
         "database_title": parent.title,
         "properties": _schema(parent)["properties"],
-        "props": page.props or {},
+        "props": row_values(page.props),
+        "color": clean_color((page.props or {}).get(COLOR_KEY)),
     }
 
 
@@ -552,6 +661,8 @@ def update_schema(
     *,
     properties: list[dict[str, Any]] | None,
     views: list[dict[str, Any]] | None,
+    color: str | None = None,
+    set_color: bool = False,
 ) -> Page:
     database = _editable(access, page_id)
     current = _schema(database)
@@ -559,6 +670,7 @@ def update_schema(
         {
             "properties": properties if properties is not None else current["properties"],
             "views": views if views is not None else current["views"],
+            "color": color if set_color else current.get("color"),
         }
     )
     database.db_schema = schema
@@ -567,9 +679,11 @@ def update_schema(
         # A removed property, a changed type or a deleted option: values that
         # no longer fit are dropped from every row.
         users = _user_ids(db)
-        rows = db.execute(select(Page).where(Page.parent_id == database.id)).scalars()
+        rows = db.execute(
+            select(Page).where(Page.parent_id == database.id, Page.props.is_not(None))
+        ).scalars()
         for row in rows:
-            cleaned = clean_props(schema, row.props or {}, users)
+            cleaned = clean_props(schema, row.props or {}, users, base=row.props or {})
             if cleaned != (row.props or {}):
                 row.props = cleaned
     db.flush()
@@ -618,14 +732,17 @@ def create_row(
     *,
     title: str,
     props: dict[str, Any] | None,
+    color: str | None = None,
     before_id: int | None = None,
     after_id: int | None = None,
 ) -> Page:
     database = _editable(access, page_id)
     existing = db.execute(
-        select(Page.id).where(Page.parent_id == database.id, Page.deleted_at.is_(None))
-    ).all()
-    if len(existing) >= MAX_ROWS:
+        select(func.count())
+        .select_from(Page)
+        .where(Page.parent_id == database.id, Page.deleted_at.is_(None))
+    ).scalar_one()
+    if existing >= MAX_ROWS:
         raise ValidationFailed(f"A database can hold at most {MAX_ROWS} rows")
     row = pages.create_page(
         db,
@@ -635,7 +752,11 @@ def create_row(
         title=title,
         link_in_parent=False,
     )
-    row.props = clean_props(_schema(database), props, _user_ids(db))
+    values = clean_props(_schema(database), props, _user_ids(db))
+    row_color = clean_color(color)
+    if row_color:
+        values[COLOR_KEY] = row_color
+    row.props = values
     if before_id is not None or after_id is not None:
         pages._place(db, row, before_id=before_id, after_id=after_id)
     db.flush()
@@ -670,6 +791,12 @@ def update_row(
         row.props = clean_props(
             _schema(database), fields["props"], _user_ids(db), base=copy.deepcopy(row.props or {})
         )
+    if "color" in fields:
+        values = {key: value for key, value in (row.props or {}).items() if key != COLOR_KEY}
+        row_color = clean_color(fields["color"])
+        if row_color:
+            values[COLOR_KEY] = row_color
+        row.props = values
     before_id, after_id = fields.get("before_id"), fields.get("after_id")
     if before_id is not None or after_id is not None:
         pages._place(db, row, before_id=before_id, after_id=after_id)

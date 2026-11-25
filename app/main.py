@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import tempfile
-from logging.handlers import RotatingFileHandler
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
@@ -12,13 +11,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.types import Receive, Scope, Send
 
 from app import __version__
 from app.api import api_router
 from app.config import BASE_DIR, Settings, get_settings
 from app.deps import SAFE_METHODS
 from app.errors import AppError
+from app.logfile import SharedRotatingFileHandler
 from app.schema import ensure_schema
 from app.web import router as web_router
 
@@ -49,13 +51,32 @@ def configure_logging(settings: Settings) -> None:
     if any(getattr(h, "_kamispace", False) for h in root.handlers):
         return
     settings.logs_dir.mkdir(parents=True, exist_ok=True)
-    handler = RotatingFileHandler(
+    # Several worker processes may write to the same file.
+    handler = SharedRotatingFileHandler(
         settings.logs_dir / "kamispace.log", maxBytes=5_000_000, backupCount=5, encoding="utf-8"
     )
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     handler._kamispace = True  # type: ignore[attr-defined]
     root.addHandler(handler)
     root.setLevel(settings.log_level.upper())
+
+
+class Compression(GZipMiddleware):
+    """Compress what compresses well: JSON, scripts and styles.
+
+    Responses that carry a secret next to text other people can influence are
+    sent as they are, so their size says nothing about the secret. Uploaded
+    files and backups are sent as they are too: most are compressed already,
+    and players ask for parts of them.
+    """
+
+    UNCOMPRESSED = ("/api/bootstrap", "/api/auth/", "/api/files/", "/api/admin/backups/")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["path"].startswith(self.UNCOMPRESSED):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
 
 
 def _same_origin(request: Request) -> bool:
@@ -94,6 +115,9 @@ def create_app() -> FastAPI:
         openapi_url=None if settings.is_production else "/api/openapi.json",
     )
 
+    # A table of a few hundred rows is ~100 KB of JSON and the scripts are
+    # larger still; compressed they are a fraction of that on the wire.
+    app.add_middleware(Compression, minimum_size=1024, compresslevel=5)
     if settings.allowed_host_list:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_host_list)
 

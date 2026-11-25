@@ -39,6 +39,31 @@ export const Toggle = Details.extend({
         if (handled) view.dom.dataset.level = String(node.attrs.level || 0);
         return handled;
       };
+      // The arrow of the library stores the new state as { open } alone,
+      // which drops every other attribute: a toggle heading came back as a
+      // plain toggle. The click is handled here instead, keeping them all.
+      const arrow = view.dom.querySelector(':scope > button');
+      view.dom.addEventListener(
+        'click',
+        (event) => {
+          const { editor, getPos } = props;
+          if (!arrow || !arrow.contains(event.target) || !editor.isEditable || typeof getPos !== 'function') return;
+          const pos = getPos();
+          const node = typeof pos === 'number' ? editor.state.doc.nodeAt(pos) : null;
+          if (!node || node.type !== this.type) return;
+          event.stopPropagation();
+          event.preventDefault();
+          const tr = editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, open: !node.attrs.open });
+          // Closing with the caret inside the body: it moves to the summary.
+          const { from } = editor.state.selection;
+          if (node.attrs.open && from > pos + node.firstChild.nodeSize && from < pos + node.nodeSize) {
+            tr.setSelection(TextSelection.create(tr.doc, pos + 2 + node.firstChild.content.size));
+          }
+          editor.view.dispatch(tr);
+          editor.view.focus();
+        },
+        true,
+      );
       return view;
     };
   },

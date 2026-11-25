@@ -139,7 +139,7 @@ test.describe('Table view', () => {
     await expect(page.locator('.db-row[data-row]')).toHaveCount(2);
 
     await page.locator('.db-th-add').click();
-    await page.getByRole('menuitem', { name: 'Number' }).click();
+    await page.getByRole('menuitem', { name: 'Number', exact: true }).click();
     // The new property is ready to be named.
     const name = page.locator('.db-property-name input');
     await expect(name).toBeFocused();

@@ -76,13 +76,14 @@ def test_the_calendar_lists_dated_rows_that_touch_the_range(alice):
     meeting = data["items"][2]
     assert meeting["kind"] == "row" and meeting["database_title"] == "Events"
     assert (meeting["start"], meeting["end"]) == ("2026-11-23T14:30", "2026-11-23T16:00")
-    assert meeting["color"] == "blue" and meeting["can_edit"] is True
+    assert meeting["color"] is None and meeting["can_edit"] is True
     assert data["databases"] == [
         {
             "id": database["id"],
             "title": "Events",
             "icon": None,
             "can_edit": True,
+            "color": None,
             "date_properties": [{"id": prop(database, "Date")["id"], "name": "Date"}],
         }
     ]

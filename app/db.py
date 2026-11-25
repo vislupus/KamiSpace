@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -57,9 +58,26 @@ def configure_sqlite(engine: Engine) -> None:
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA busy_timeout=15000")
         cursor.execute("PRAGMA temp_store=MEMORY")
+        # 8 MB of page cache per connection and memory-mapped reads.
+        cursor.execute("PRAGMA cache_size=-8000")
+        cursor.execute("PRAGMA mmap_size=268435456")
         cursor.close()
+
+
+# One writer at a time is all SQLite allows. Inside a process the writers
+# wait for each other here, in a queue, instead of each polling the lock of
+# the file until its patience runs out ("database is locked") while a slower
+# request holds it. Between worker processes SQLite's own waiting applies,
+# with one contender per process.
+_write_turn = threading.Lock()
+WRITE_WAIT_SECONDS = 30
+
+
+def _release_write_turn(session: Session) -> None:
+    if session.info.pop("write_turn", False):
+        _write_turn.release()
 
 
 @event.listens_for(Session, "after_begin")
@@ -69,9 +87,26 @@ def _emit_begin(session: Session, _transaction, connection) -> None:
     Writers take the write lock up front; read-only sessions use a deferred
     transaction so they never block (or get blocked by) a writer under WAL.
     """
-    if connection.dialect.name == "sqlite":
-        read_only = session.info.get("read_only", False)
-        connection.exec_driver_sql("BEGIN" if read_only else "BEGIN IMMEDIATE")
+    if connection.dialect.name != "sqlite":
+        return
+    if session.info.get("read_only", False):
+        connection.exec_driver_sql("BEGIN")
+        return
+    if not session.info.get("write_turn"):
+        # After a long wait the request goes on regardless and lets SQLite decide.
+        session.info["write_turn"] = _write_turn.acquire(timeout=WRITE_WAIT_SECONDS)
+    try:
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
+    except Exception:
+        _release_write_turn(session)
+        raise
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _end_write_turn(session: Session, transaction) -> None:
+    # The outermost transaction is over (committed, rolled back or closed).
+    if transaction.parent is None:
+        _release_write_turn(session)
 
 
 @lru_cache
@@ -80,7 +115,11 @@ def get_engine() -> Engine:
     settings.ensure_directories()
     engine = create_engine(
         settings.database_url,
-        connect_args={"check_same_thread": False, "timeout": 5},
+        connect_args={"check_same_thread": False, "timeout": 15},
+        # Requests run on a pool of 40 threads; each needs a connection of
+        # its own, and none of them should wait for one.
+        pool_size=10,
+        max_overflow=40,
     )
     configure_sqlite(engine)
     return engine

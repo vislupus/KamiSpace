@@ -63,11 +63,14 @@ class DatabaseCreateIn(Body):
 class DatabaseUpdateIn(Body):
     properties: list[dict[str, Any]] | None = Field(default=None, max_length=60)
     views: list[dict[str, Any]] | None = Field(default=None, max_length=30)
+    # The colour of the database's entries in the calendar; null removes it.
+    color: str | None = Field(default=None, max_length=16)
 
 
 class RowCreateIn(Body):
     title: str = Field(default="", max_length=1000)
     props: dict[str, Any] | None = None
+    color: str | None = Field(default=None, max_length=16)
     before_id: int | None = None
     after_id: int | None = None
 
@@ -77,6 +80,8 @@ class RowUpdateIn(Body):
     icon: str | None = Field(default=None, max_length=32)
     # Only the listed properties change; null clears a value.
     props: dict[str, Any] | None = None
+    # The colour of the row (in the table and in the calendar); null removes it.
+    color: str | None = Field(default=None, max_length=16)
     before_id: int | None = None
     after_id: int | None = None
 

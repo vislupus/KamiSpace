@@ -5,7 +5,7 @@ import { openPopover } from './popover.js';
 
 /**
  * items: Array of
- *   { label, icon?, emoji?, hint?, danger?, disabled?, checked?, onSelect?, submenu? }
+ *   { label, icon?, emoji?, swatch?, description?, hint?, danger?, disabled?, checked?, onSelect?, submenu? }
  *   { separator: true } | { heading: 'Text' }
  */
 export function openMenu({
@@ -87,11 +87,13 @@ export function openMenu({
         role: 'menuitem',
         'aria-disabled': item.disabled ? 'true' : null,
       },
-      item.emoji
-        ? h('span', { class: 'menu-emoji' }, item.emoji)
-        : item.icon
-          ? icon(item.icon, 16)
-          : null,
+      item.swatch
+        ? h('span', { class: 'db-swatch', dataset: { color: item.swatch } })
+        : item.emoji
+          ? h('span', { class: 'menu-emoji' }, item.emoji)
+          : item.icon
+            ? icon(item.icon, 16)
+            : null,
       h(
         'span',
         { class: 'menu-label' },

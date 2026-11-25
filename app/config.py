@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     env: Literal["development", "production"] = "development"
     host: str = "127.0.0.1"
     port: int = 8000
+    # Worker processes of `python -m app run`. One is enough for a small team;
+    # several let the server use more than one CPU core.
+    workers: int = Field(default=1, ge=1, le=64)
     log_level: str = "INFO"
 
     # Storage. A relative value is resolved against the project directory.

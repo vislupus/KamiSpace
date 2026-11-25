@@ -19,8 +19,8 @@ import {
   trashPage,
 } from './actions.js';
 import { mountDatabase } from './database/index.js';
-import { ADDABLE_TYPES, TYPES, editValue, newId, renderValue } from './database/values.js';
-import { openEmojiPicker } from './emoji.js';
+import { ADDABLE_TYPES, TYPES, bindSchema, editValue, newId, renderValue, valueOf } from './database/values.js';
+import { openEmojiPicker } from '../lib/emoji-picker.js';
 import { downloadText, importMarkdown } from './import.js';
 import { navigate, pagePath } from './router.js';
 import { DocSaver } from './saver.js';
@@ -384,17 +384,21 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
     rowProps.hidden = !row;
     if (!row) return;
     const rowUrl = `/api/databases/${row.database_id}`;
+    // Formulas read the other values of the row, the name included.
+    bindSchema(row.properties);
+    const record = { id: page.id, title: title.value, props: row.props };
     replace(
       rowProps,
       properties.map((prop) => {
-        const value = row.props[prop.id] ?? null;
+        const value = valueOf(record, prop);
         const shown = renderValue(prop, value);
+        const canChange = editable && prop.type !== 'formula';
         const cell = h(
           'div',
-          { class: `row-prop-value${editable ? ' is-editable' : ''}`, dataset: { prop: prop.id }, role: editable ? 'button' : null },
+          { class: `row-prop-value${canChange ? ' is-editable' : ''}`, dataset: { prop: prop.id }, role: canChange ? 'button' : null },
           shown ?? h('span', { class: 'row-prop-empty' }, 'Empty'),
         );
-        if (editable) {
+        if (canChange) {
           cell.addEventListener('click', () =>
             editValue(prop, value, cell, {
               onChange: async (next) => {

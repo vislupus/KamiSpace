@@ -90,7 +90,8 @@ function openShortcuts() {
     ['Light / dark', 'Mod+Shift+L'],
     ['Focus mode', 'Mod+Shift+F'],
     ['Block menu', '/'],
-    ['Link to a page', '@ or [['],
+    ['Link to a page or a database', '@ or [['],
+    ['Emoji by name', ': and a few letters'],
     ['Select the block', 'Esc'],
     ['Block above / below (block selected)', '↑ / ↓'],
     ['Write in the selected block', 'Enter'],
@@ -110,6 +111,7 @@ function openShortcuts() {
     ['Indent / outdent list item', 'Tab / Shift+Tab'],
     ['Move a block into / out of the toggle above', 'Tab / Shift+Tab'],
     ['Table: next cell · cell below · line break', 'Tab · Enter · Shift+Enter'],
+    ['Database: store and go to the next / previous cell', 'Tab / Shift+Tab'],
     ['Calendar: today · year, month, week, day', 'T · Y, M, W, D'],
     ['Undo · Redo', 'Mod+Z · Mod+Shift+Z'],
   ];

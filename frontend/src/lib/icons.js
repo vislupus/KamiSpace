@@ -12,6 +12,7 @@ import {
   Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Rows3, Search, Settings, Shield, Smile,
   SquareCode, SquarePen, Star, StickyNote, Strikethrough, Sun, Table, TextQuote, Trash, Trash2,
   TriangleAlert, Type, Underline, Unlink, Upload, User, UserPlus, Users, X, Zap, createElement,
+  SquareFunction, Palette, CalendarRange, Briefcase, Hourglass, Calculator, FileSymlink, PanelTop,
 } from 'lucide';
 
 const ICONS = {
@@ -43,17 +44,27 @@ const ICONS = {
   strike: Strikethrough, sun: Sun, table: Table, quote: TextQuote, trash: Trash,
   'trash-2': Trash2, warning: TriangleAlert, text: Type, underline: Underline, unlink: Unlink,
   upload: Upload, user: User, 'user-plus': UserPlus, users: Users, x: X, zap: Zap,
+  formula: SquareFunction, palette: Palette, 'calendar-range': CalendarRange, briefcase: Briefcase,
+  hourglass: Hourglass, calculator: Calculator, 'page-link': FileSymlink, inline: PanelTop,
 };
+
+// Drawing an icon from its description is slow next to copying one that was
+// drawn before, and a table shows the same few icons on every row.
+const drawn = new Map();
 
 /** Returns a fresh <svg> element for the named icon. */
 export function icon(name, size = 16) {
-  const node = ICONS[name] ?? ICONS.file;
-  const svg = createElement(node, {
-    width: size,
-    height: size,
-    'stroke-width': 1.75,
-    'aria-hidden': 'true',
-  });
-  svg.classList.add('icon');
-  return svg;
+  const key = `${name}/${size}`;
+  let svg = drawn.get(key);
+  if (!svg) {
+    svg = createElement(ICONS[name] ?? ICONS.file, {
+      width: size,
+      height: size,
+      'stroke-width': 1.75,
+      'aria-hidden': 'true',
+    });
+    svg.classList.add('icon');
+    drawn.set(key, svg);
+  }
+  return svg.cloneNode(true);
 }

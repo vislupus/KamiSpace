@@ -804,6 +804,13 @@ button.db-calc-cell:hover {
   margin: 0.4em 0;
   user-select: none;
 }
+/* An inline database starts like a heading: with air above it. */
+.doc * + .database-block {
+  margin-top: 1.5em;
+}
+.doc .columns + .database-block {
+  margin-top: 2em;
+}
 .database-block .db-title,
 .database-block input,
 .database-block textarea {
@@ -1078,4 +1085,208 @@ button.db-calc-cell:hover {
   .main.has-peek > .view {
     margin-right: 0;
   }
+}
+
+/* -- the colour of a row ------------------------------------------------------- */
+
+.db-row-color {
+  flex: none;
+  align-self: stretch;
+  width: 4px;
+  margin: -1px 2px -1px -4px;
+  border-radius: 2px;
+  background: var(--row-color, var(--ink-gray));
+}
+.db-row[data-color="gray"], .db-card[data-color="gray"] { --row-color: var(--ink-gray); }
+.db-row[data-color="brown"], .db-card[data-color="brown"] { --row-color: var(--ink-brown); }
+.db-row[data-color="orange"], .db-card[data-color="orange"] { --row-color: var(--ink-orange); }
+.db-row[data-color="yellow"], .db-card[data-color="yellow"] { --row-color: var(--ink-yellow); }
+.db-row[data-color="green"], .db-card[data-color="green"] { --row-color: var(--ink-green); }
+.db-row[data-color="blue"], .db-card[data-color="blue"] { --row-color: var(--ink-blue); }
+.db-row[data-color="purple"], .db-card[data-color="purple"] { --row-color: var(--ink-purple); }
+.db-row[data-color="pink"], .db-card[data-color="pink"] { --row-color: var(--ink-pink); }
+.db-row[data-color="red"], .db-card[data-color="red"] { --row-color: var(--ink-red); }
+.db-card[data-color] {
+  border-left: 3px solid var(--row-color);
+}
+
+/* -- formulas ---------------------------------------------------------------------- */
+
+.db-cell[data-type="formula"] {
+  justify-content: flex-end;
+}
+.db-cell[data-type="formula"]:has(.db-text, .db-date, .db-checkbox, .db-formula-error) {
+  justify-content: flex-start;
+}
+.db-formula-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--danger);
+  font-size: 12.5px;
+}
+.db-formula-popover {
+  padding: 0;
+}
+.db-formula-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(78vh, 620px);
+  padding: 12px;
+}
+.db-formula-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.db-formula-input {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  background: var(--bg-inset);
+  color: var(--text);
+  font: 13px/1.5 var(--font-mono);
+  resize: vertical;
+}
+.db-formula-input:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent-soft);
+}
+.db-formula-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 20px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.db-formula-result .icon {
+  flex: none;
+  margin-top: 2px;
+}
+.db-formula-result.is-ok {
+  color: var(--success);
+}
+.db-formula-result.is-error {
+  color: var(--danger);
+}
+.db-formula-section .menu-heading {
+  padding-left: 0;
+}
+.db-formula-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.db-formula-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.db-formula-chip:hover {
+  background: var(--bg-hover);
+}
+.db-formula-chip .icon {
+  color: var(--text-3);
+}
+.db-formula-functions {
+  flex: 1;
+  min-height: 90px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+.db-formula-function {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+.db-formula-function:hover {
+  background: var(--bg-hover);
+}
+.db-formula-function code {
+  color: var(--text);
+  font: 12.5px var(--font-mono);
+}
+.db-formula-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.db-formula-format {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+.db-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 270px;
+  padding: 12px;
+}
+.db-preset-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.db-preset-field .select,
+.db-preset .input {
+  width: 100%;
+}
+.db-preset-missing {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* -- choosing a database to show (linked view) --------------------------------------- */
+
+.db-link-picker {
+  width: 300px;
+}
+.db-link-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.db-link-empty {
+  padding: 12px 10px;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.45;
 }

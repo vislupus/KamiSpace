@@ -40,7 +40,7 @@ import { debounce, storageGet, storageSet } from '../lib/util.js';
 import { copyPageLink, wantsNewTab } from './actions.js';
 import { openPeek, peekedPageId } from './peek.js';
 import { navigate, pagePath } from './router.js';
-import { on, personalWorkspace, refreshTree } from './store.js';
+import { addRowPage, on, personalWorkspace, refreshTree, removePage } from './store.js';
 
 const VIEWS = [
   ['year', 'Year', 'KeyY'],
@@ -127,12 +127,38 @@ export function mountCalendar({ container, topbar }) {
   const root = h('div', { class: 'cal' }, side, h('div', { class: 'cal-main' }, header, body));
   replace(container, root);
 
+  const NO_HOLIDAYS = [];
   const showHolidays = () => !hidden.has('holidays');
-  const special = (day) => (showHolidays() ? holidaysOn(day) : []);
-  const colorOf = (item) => (item.kind === 'task' ? 'task' : COLORS[item.database_id % COLORS.length]);
-  const visibleItems = () =>
-    items.filter((item) => (item.kind === 'task' ? !hidden.has('tasks') : !hidden.has(`db:${item.database_id}`)));
-  const onDay = (day) => visibleItems().filter((item) => dayOf(item.start) <= day && lastDay(item) >= day);
+  const special = (day) => (showHolidays() ? holidaysOn(day) : NO_HOLIDAYS);
+  /** A row has its own colour, or that of its database, or one given by the database's number. */
+  const paletteColor = (databaseId) => COLORS[databaseId % COLORS.length];
+  const colorOf = (item) => (item.kind === 'task' ? 'task' : (item.color ?? paletteColor(item.database_id)));
+
+  // Worked out once per drawing instead of once per day shown: which events
+  // are visible, and which of them fall on each day.
+  let frame = {};
+  const visibleItems = () => {
+    frame.visible ??= items.filter((item) => (item.kind === 'task' ? !hidden.has('tasks') : !hidden.has(`db:${item.database_id}`)));
+    return frame.visible;
+  };
+  const NOTHING = [];
+  function onDay(day) {
+    if (!frame.days) {
+      frame.days = new Map();
+      const [first, last] = range();
+      for (const item of visibleItems()) {
+        const from = dayOf(item.start) < first ? first : dayOf(item.start);
+        const to = lastDay(item) > last ? last : lastDay(item);
+        for (let current = from; current <= to; current = addDays(current, 1)) {
+          const list = frame.days.get(current);
+          if (list) list.push(item);
+          else frame.days.set(current, [item]);
+        }
+      }
+    }
+    return frame.days.get(day) ?? NOTHING;
+  }
+  const today = () => (frame.today ??= now().date);
 
   // -- what is shown ---------------------------------------------------------------
 
@@ -219,7 +245,7 @@ export function mountCalendar({ container, topbar }) {
   async function removeItem(item) {
     try {
       await api.delete(`/api/pages/${item.id}`);
-      refreshTree();
+      removePage(item.id);
       load({ force: true });
       toast('Moved to the recycle bin', {
         action: {
@@ -246,12 +272,55 @@ export function mountCalendar({ container, topbar }) {
         { label: 'Open in a new tab', icon: 'external', onSelect: () => window.open(pagePath(item.id), '_blank', 'noopener') },
         { separator: true },
         { label: 'Copy link', icon: 'link', onSelect: () => copyPageLink(item.id) },
+        item.kind === 'row' && item.can_edit
+          ? {
+              label: 'Color',
+              icon: 'palette',
+              submenu: colorItems(item.own_color, (color) =>
+                saveColor(`/api/databases/${item.database_id}/rows/${item.id}`, color, () => {
+                  // Shown at once: the row's colour, or back to its database's.
+                  const source = sources.find((entry) => entry.id === item.database_id);
+                  for (const entry of items) {
+                    if (entry.kind === 'row' && entry.id === item.id) {
+                      entry.own_color = color;
+                      entry.color = color ?? source?.color ?? null;
+                    }
+                  }
+                }),
+              ),
+            }
+          : null,
         item.kind === 'row' && item.can_edit ? { separator: true } : null,
         item.kind === 'row' && item.can_edit
           ? { label: 'Delete', icon: 'trash-2', danger: true, onSelect: () => removeItem(item) }
           : null,
       ],
     });
+  }
+
+  /** Menu items to choose a colour; the first one goes back to the automatic colour. */
+  function colorItems(current, onPick, automatic = 'Same as the calendar') {
+    return [
+      { label: automatic, icon: 'refresh', checked: !current, onSelect: () => onPick(null) },
+      { separator: true },
+      ...COLORS.map((color) => ({
+        label: color[0].toUpperCase() + color.slice(1),
+        swatch: color,
+        checked: current === color,
+        onSelect: () => onPick(color),
+      })),
+    ];
+  }
+
+  async function saveColor(url, color, apply) {
+    apply();
+    render();
+    try {
+      await api.patch(url, { color });
+    } catch (error) {
+      toastError(error, 'Could not save the color');
+      load({ force: true });
+    }
   }
 
   /** A link to the event's page that opens beside the calendar. */
@@ -480,14 +549,14 @@ export function mountCalendar({ container, topbar }) {
             value = { start, ...(end ? { end } : {}) };
           }
           try {
-            await api.post(`/api/databases/${chosen.source.id}/rows`, {
+            const created = await api.post(`/api/databases/${chosen.source.id}/rows`, {
               title: name.value.trim(),
               props: { [chosen.property.id]: value },
             });
+            addRowPage(chosen.source.id, created);
             storageSet('kamispace-calendar-target', `${chosen.source.id}:${chosen.property.id}`);
             hidden.delete(`db:${chosen.source.id}`); // a new event must be visible
             modal.close();
-            refreshTree();
             load({ force: true });
           } catch (problem) {
             error.textContent = problem.message || 'Could not create the event';
@@ -590,17 +659,51 @@ export function mountCalendar({ container, topbar }) {
     if (!sideOpen) return;
     picker.select(view === 'week' ? [startOfWeek(cursor), addDays(startOfWeek(cursor), 6)] : cursor);
     picker.show(cursor);
-    const row = (key, label, color, hint = '') => {
+    const row = (key, label, color, hint = '', source = null) => {
       const box = h('input', { type: 'checkbox', checked: !hidden.has(key), 'aria-label': label });
       box.addEventListener('change', () => toggleSource(key));
-      return h('label', { class: 'cal-source', dataset: { color }, title: hint || label }, box, h('span', { class: 'cal-source-name' }, label));
+      // The colour of a database's entries is chosen here, for everyone.
+      const paint = source?.can_edit
+        ? h(
+            'button',
+            {
+              class: 'cal-source-color',
+              type: 'button',
+              title: 'Color of this calendar',
+              'aria-label': `Color of ${label}`,
+              onclick: (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openMenu({
+                  anchor: event.currentTarget,
+                  placement: 'bottom-end',
+                  items: colorItems(
+                    source.color,
+                    (picked) =>
+                      saveColor(`/api/databases/${source.id}`, picked, () => {
+                        source.color = picked;
+                        for (const entry of items) {
+                          if (entry.kind === 'row' && entry.database_id === source.id && !entry.own_color) entry.color = picked;
+                        }
+                      }),
+                    'Automatic',
+                  ),
+                });
+              },
+            },
+            icon('palette', 13),
+          )
+        : null;
+      return h('label', { class: 'cal-source', dataset: { color }, title: hint || label }, box, h('span', { class: 'cal-source-name' }, label), paint);
     };
     replace(
       side,
       picker.el,
       h('div', { class: 'cal-side-title' }, 'Calendars'),
       sources.length
-        ? sources.map((source) => row(`db:${source.id}`, source.title || 'Untitled', COLORS[source.id % COLORS.length], 'Rows of this database that have a date'))
+        ? sources.map((source) =>
+            row(`db:${source.id}`, source.title || 'Untitled', source.color ?? paletteColor(source.id), 'Rows of this database that have a date', source),
+          )
         : h('div', { class: 'cal-side-empty' }, 'Databases with a Date property show up here.'),
       h('div', { class: 'cal-side-title' }, 'Other'),
       row('tasks', 'My tasks with a due date', 'task'),
@@ -679,7 +782,7 @@ export function mountCalendar({ container, topbar }) {
   function dayClasses(day, month) {
     const list = special(day);
     return (
-      `${parts(day).month === month ? '' : ' is-outside'}${day === now().date ? ' is-today' : ''}` +
+      `${parts(day).month === month ? '' : ' is-outside'}${day === today() ? ' is-today' : ''}` +
       `${isWeekend(day) ? ' is-weekend' : ''}` +
       `${list.some((item) => item.off && item.kind !== 'compensation') ? ' is-holiday' : ''}` +
       `${list.some((item) => item.kind === 'compensation') ? ' is-lieu' : ''}` +
@@ -823,7 +926,7 @@ export function mountCalendar({ container, topbar }) {
                 h(
                   'button',
                   { class: 'cal-day-number', type: 'button', title: dayTitle(day), onclick: () => go('day', day) },
-                  parts(day).day === 1 ? formatDayMonth(day) : String(parts(day).day),
+                  String(parts(day).day),
                 ),
                 names.length
                   ? h('span', { class: 'cal-day-holiday', title: names.map((item) => `${item.name} — ${item.nameEn}`).join('\n') }, names.map((item) => item.name).join(' · '))
@@ -1144,6 +1247,7 @@ export function mountCalendar({ container, topbar }) {
 
   function render() {
     if (destroyed) return;
+    frame = {};
     // Redrawing the same view (an event moved, a calendar hidden) keeps the place.
     const scroll = root.dataset.view === view && shownRange === range().join('|');
     shownRange = range().join('|');

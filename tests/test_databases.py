@@ -126,7 +126,7 @@ def test_changing_the_schema_drops_values_that_no_longer_fit(alice):
     properties[1] = {**status, "options": [o for o in status["options"] if o["id"] != drop]}
     properties.append({"id": "pnum", "name": "Estimate", "type": "number", "format": "bar"})
     properties.append({"id": "bad id!", "name": "x", "type": "text"})
-    properties.append({"id": "pwhat", "name": "x", "type": "formula"})
+    properties.append({"id": "pwhat", "name": "x", "type": "rollup"})
     properties.append({"id": "title2", "name": "Second title", "type": "title"})
     updated = alice.patch(url, json={"properties": properties})
     assert updated.status_code == 200

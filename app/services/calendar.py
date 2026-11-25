@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.errors import ValidationFailed
 from app.models import ROLE_EDITOR, Page, Task
-from app.services.databases import KIND_DATABASE
-from app.services.permissions import Access, role_at_least
+from app.services.databases import COLOR_KEY, KIND_DATABASE, clean_color
+from app.services.permissions import Access, PageNode, role_at_least
 
 MAX_DAYS = 800
 
@@ -25,18 +25,6 @@ def _day(value: str, name: str) -> date:
         return date.fromisoformat(value)
     except (TypeError, ValueError):
         raise ValidationFailed(f"{name}: expected a date like 2026-11-23") from None
-
-
-def _row_color(properties: list[dict[str, Any]], props: dict[str, Any]) -> str | None:
-    """The colour of a row's status (or first select), to tell events apart."""
-    for wanted in ("status", "select"):
-        for prop in properties:
-            if prop["type"] != wanted:
-                continue
-            for option in prop.get("options", []):
-                if option["id"] == props.get(prop["id"]):
-                    return option["color"]
-    return None
 
 
 def calendar(db: Session, access: Access, *, start: str, end: str) -> dict[str, Any]:
@@ -49,11 +37,23 @@ def calendar(db: Session, access: Access, *, start: str, end: str) -> dict[str, 
 
     items: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = []
+    # Database id → what is needed to read its rows.
+    readable: dict[int, dict[str, Any]] = {}
     databases = db.execute(
-        select(Page)
+        select(
+            Page.id,
+            Page.parent_id,
+            Page.workspace_id,
+            Page.owner_id,
+            Page.title,
+            Page.icon,
+            Page.locked,
+            Page.db_schema,
+        )
         .where(Page.kind == KIND_DATABASE, Page.deleted_at.is_(None))
         .order_by(Page.title, Page.id)
-    ).scalars()
+    ).all()
+    access.prime([PageNode(d.id, d.parent_id, d.workspace_id, d.owner_id) for d in databases])
     for database in databases:
         role = access.page_role(database.id)
         if role is None:
@@ -64,58 +64,91 @@ def calendar(db: Session, access: Access, *, start: str, end: str) -> dict[str, 
         if not date_properties:
             continue
         can_edit = role_at_least(role, ROLE_EDITOR) and not database.locked
+        color = clean_color(schema.get("color"))
         sources.append(
             {
                 "id": database.id,
                 "title": database.title,
                 "icon": database.icon,
                 "can_edit": can_edit,
+                "color": color,
                 "date_properties": [
                     {"id": prop["id"], "name": prop["name"]} for prop in date_properties
                 ],
             }
         )
-        rows = db.execute(
-            select(Page).where(
-                Page.parent_id == database.id, Page.deleted_at.is_(None), Page.props.is_not(None)
+        readable[database.id] = {
+            "title": database.title,
+            "locked": database.locked,
+            "color": color,
+            "date_properties": date_properties,
+        }
+
+    # The rows of every database in one query, and only the columns the
+    # calendar shows (never the text of the pages).
+    rows = (
+        db.execute(
+            select(
+                Page.id,
+                Page.parent_id,
+                Page.workspace_id,
+                Page.owner_id,
+                Page.title,
+                Page.icon,
+                Page.locked,
+                Page.props,
+            ).where(
+                Page.parent_id.in_(readable.keys()),
+                Page.deleted_at.is_(None),
+                Page.props.is_not(None),
             )
-        ).scalars()
-        for row in rows:
-            props = row.props or {}
-            dated = [
-                (prop, props[prop["id"]])
-                for prop in date_properties
-                if isinstance(props.get(prop["id"]), dict) and props[prop["id"]].get("start")
-            ]
-            if not dated:
+        ).all()
+        if readable
+        else []
+    )
+    access.prime([PageNode(r.id, r.parent_id, r.workspace_id, r.owner_id) for r in rows])
+    for row in rows:
+        source = readable[row.parent_id]
+        props = row.props or {}
+        dated = [
+            (prop, props[prop["id"]])
+            for prop in source["date_properties"]
+            if isinstance(props.get(prop["id"]), dict) and props[prop["id"]].get("start")
+        ]
+        if not dated:
+            continue
+        row_role: str | None = None
+        for prop, value in dated:
+            begins = value["start"]
+            ends = value.get("end")
+            # Compared by day: "2026-11-23T14:30" belongs to 23 November.
+            if begins[:10] > last_day or (ends or begins)[:10] < first_day:
                 continue
-            row_role = access.page_role(row.id)
             if row_role is None:
-                continue
-            for prop, value in dated:
-                begins = value["start"]
-                ends = value.get("end")
-                # Compared by day: "2026-11-23T14:30" belongs to 23 November.
-                if begins[:10] > last_day or (ends or begins)[:10] < first_day:
-                    continue
-                items.append(
-                    {
-                        "kind": "row",
-                        "id": row.id,
-                        "title": row.title,
-                        "icon": row.icon,
-                        "database_id": database.id,
-                        "database_title": database.title,
-                        "property_id": prop["id"],
-                        "property": prop["name"],
-                        "start": begins,
-                        "end": ends,
-                        "color": _row_color(properties, props),
-                        "can_edit": role_at_least(row_role, ROLE_EDITOR)
-                        and not row.locked
-                        and not database.locked,
-                    }
-                )
+                row_role = access.page_role(row.id)
+                if row_role is None:
+                    break
+            row_color = clean_color(props.get(COLOR_KEY))
+            items.append(
+                {
+                    "kind": "row",
+                    "id": row.id,
+                    "title": row.title,
+                    "icon": row.icon,
+                    "database_id": row.parent_id,
+                    "database_title": source["title"],
+                    "property_id": prop["id"],
+                    "property": prop["name"],
+                    "start": begins,
+                    "end": ends,
+                    # The row's own colour, or else the colour of its database.
+                    "color": row_color or source["color"],
+                    "own_color": row_color,
+                    "can_edit": role_at_least(row_role, ROLE_EDITOR)
+                    and not row.locked
+                    and not source["locked"],
+                }
+            )
 
     due = db.execute(
         select(Task, Page)

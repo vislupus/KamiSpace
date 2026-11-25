@@ -7,7 +7,7 @@ the code and why they were made.
 ## Overview
 
 ```
-Browser ── HTTPS ──▶ reverse proxy ──▶ Uvicorn / FastAPI (one process)
+Browser ── HTTPS ──▶ reverse proxy ──▶ Uvicorn / FastAPI (1…n workers)
                                          ├── app/api        HTTP routes (thin)
                                          ├── app/services   business rules
                                          ├── app/models     SQLAlchemy 2 models
@@ -25,12 +25,31 @@ multi-step change is one transaction.
 ### SQLite configuration
 
 Every connection sets `foreign_keys=ON`, `journal_mode=WAL`,
-`synchronous=NORMAL` and a 5 second `busy_timeout` (`app/db.py`).
+`synchronous=NORMAL`, a 15 second `busy_timeout`, an 8 MB page cache and
+memory-mapped reads (`app/db.py`).
 
 Transactions are started explicitly: requests that change data begin with
 `BEGIN IMMEDIATE` and take the write lock up front; GET requests use a
 deferred transaction and never block writers. This avoids the classic WAL
 failure where a transaction that started reading cannot upgrade to a write.
+
+**Several workers.** `python -m app run --workers N` (or `KAMISPACE_WORKERS`)
+starts N processes that share the database file and the log file. Nothing is
+kept in a process between requests — sessions, rate limits and the page tree
+all live in the database — so any worker can answer any request. Readers
+never wait. Writers wait in line: inside a process on a lock taken before
+`BEGIN IMMEDIATE` (so they queue instead of polling the file lock until it
+times out), between processes on SQLite's own lock. Migrations at start-up
+run under a file lock, so only one worker applies them. The log file is
+written and rotated under a file lock as well (`app/logfile.py`).
+
+**Large answers** (a database with its rows, the page tree, the calendar)
+are read as plain columns — never the text of the pages — in a fixed number
+of queries whatever the number of rows: `Access.prime()` gives the permission
+resolver the tree so that it does not look up each row. They are sent without
+FastAPI's re-encoding pass and compressed with gzip (about a tenth of the
+size). Responses that carry the CSRF token, and uploaded files, are not
+compressed.
 
 ### Data model
 
@@ -69,6 +88,14 @@ plus the FTS5 table `pages_fts`. The schema is created by Alembic
   property re-checks the values of all rows. Filtering, sorting, grouping and
   calculations happen in the browser (`frontend/src/app/database/`), on the
   rows the server already decided the user may see.
+  A *formula* property stores only its text. `frontend/src/lib/formula.js`
+  parses it into a tree and walks the tree — no `eval`, no access to anything
+  but the values of the row — and is tested with `node --test`. The server
+  never calculates or stores formula values. The colour of a row is kept next
+  to its values under a key no property can have (`$color`); the colour of a
+  database is part of its schema. Neither needed a migration.
+  The table keeps one DOM line per row: a change redraws that line (and the
+  totals), not the table, and a new row does not fetch the page tree again.
 - **Calendar.** `frontend/src/lib/bgcalendar.js` is the single place for date
   arithmetic: ISO weeks, month grids, Orthodox Easter, the official holidays
   with their days in lieu, the Europe/Sofia clock changes, and the DD.MM.YYYY
@@ -210,9 +237,14 @@ frame), no long tasks.
 
 ## Trade-offs worth knowing
 
-- **Single process.** Simple and fast for a team; not designed for horizontal
-  scaling. The practical limits are SQLite's single writer and the one
-  machine's disk.
+- **One machine.** Several worker processes use the cores of one server; it
+  is not designed to run on several servers. The practical limits are
+  SQLite's single writer (writes are taken in turn, each a few milliseconds)
+  and the one machine's disk.
+- **Emoji data is bundled** (`frontend/src/data/emoji.json`, built by
+  `npm run emoji` from emojibase and the Unicode CLDR Bulgarian names) and
+  loaded when a picker first opens. Which emoji the computer's fonts can draw
+  is tested once per browser, by drawing them (`lib/emoji-support.js`).
 - **No real-time co-editing.** Two people can edit different pages freely;
   on the same page the second saver gets a conflict prompt. Idle tabs refresh
   themselves when they regain focus.

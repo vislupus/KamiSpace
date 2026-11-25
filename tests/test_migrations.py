@@ -100,7 +100,7 @@ def test_sqlite_is_configured_for_integrity(data_dir):
     with get_engine().connect() as connection:
         assert connection.execute(text("PRAGMA foreign_keys")).scalar() == 1
         assert connection.execute(text("PRAGMA journal_mode")).scalar() == "wal"
-        assert connection.execute(text("PRAGMA busy_timeout")).scalar() == 5000
+        assert connection.execute(text("PRAGMA busy_timeout")).scalar() == 15000
 
 
 def test_upgrade_from_the_first_release_keeps_existing_data(tmp_path, monkeypatch):

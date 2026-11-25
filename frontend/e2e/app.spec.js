@@ -139,7 +139,8 @@ test.describe('Pages and navigation', () => {
     const created = await openNewPage(page, session, { title: 'Decorated' });
     await page.locator('.page-head').hover();
     await page.getByRole('button', { name: 'Add icon' }).click();
-    await page.locator('.emoji-grid button', { hasText: '🚀' }).click();
+    await page.locator('.emoji-search').fill('rocket');
+    await page.locator('.emoji-button[data-emoji="🚀"]').click();
     await expect(page.locator('.page-icon')).toHaveText('🚀');
     await expect(treeRow(page, 'Decorated').locator('.tree-icon')).toHaveText('🚀');
 

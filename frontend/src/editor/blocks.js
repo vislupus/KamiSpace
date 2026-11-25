@@ -1,7 +1,8 @@
 // The block catalogue. Slash commands, the "+" button and the "Turn into"
 // menu are all generated from this list — adding a block type means adding an
 // entry here (plus its Tiptap extension and the server's allow-list).
-import { insertDatabase } from './extensions/database.js';
+import { insertDatabase, insertLinkedDatabase } from './extensions/database.js';
+import { insertEmoji } from './extensions/emoji.js';
 import { blockKind, convertBlock, currentBlockPos, sameKind } from './block-ops.js';
 import { promptForBookmark } from './extensions/bookmark.js';
 import { promptForEmbed } from './extensions/embed.js';
@@ -158,20 +159,47 @@ export const BLOCKS = [
   {
     id: 'database',
     group: 'Database',
-    title: 'Database – table',
-    description: 'Rows with properties: status, person, date…',
+    title: 'Database – inline',
+    description: 'A table of rows with properties, shown in this page',
     icon: 'database',
-    keywords: ['database', 'db', 'table view', 'spreadsheet', 'rows', 'properties', 'tracker'],
+    keywords: ['database', 'db', 'inline', 'table view', 'spreadsheet', 'rows', 'properties', 'tracker'],
     action: (editor) => insertDatabase(editor, 'table'),
+  },
+  {
+    id: 'database-page',
+    group: 'Database',
+    title: 'Database – full page',
+    description: 'A page of its own, only linked from here',
+    icon: 'page-link',
+    keywords: ['database', 'db', 'full page', 'fullpage', 'separate', 'table view', 'spreadsheet', 'tracker'],
+    action: (editor) => insertDatabase(editor, 'table', { fullPage: true }),
   },
   {
     id: 'board',
     group: 'Database',
-    title: 'Board – Kanban',
-    description: 'Cards in columns, moved by dragging',
+    title: 'Board – inline',
+    description: 'Kanban cards in columns, shown in this page',
     icon: 'kanban',
-    keywords: ['kanban', 'board', 'database', 'cards', 'tasks', 'status', 'trello'],
+    keywords: ['kanban', 'board', 'database', 'inline', 'cards', 'tasks', 'status', 'trello'],
     action: (editor) => insertDatabase(editor, 'board'),
+  },
+  {
+    id: 'board-page',
+    group: 'Database',
+    title: 'Board – full page',
+    description: 'A Kanban board on a page of its own, linked from here',
+    icon: 'page-link',
+    keywords: ['kanban', 'board', 'database', 'full page', 'fullpage', 'separate', 'cards'],
+    action: (editor) => insertDatabase(editor, 'board', { fullPage: true }),
+  },
+  {
+    id: 'linked-database',
+    group: 'Database',
+    title: 'Linked view of a database',
+    description: 'Show a database that already exists, here as well',
+    icon: 'inline',
+    keywords: ['linked', 'database', 'existing', 'view', 'reference', 'embed'],
+    action: (editor) => insertLinkedDatabase(editor),
   },
   {
     id: 'page',
@@ -191,6 +219,16 @@ export const BLOCKS = [
     hint: '@',
     keywords: ['mention', 'reference', 'backlink', 'pagelink', 'link'],
     action: (editor) => editor.chain().focus().insertContent('@').run(),
+  },
+  {
+    id: 'emoji',
+    group: 'Inline',
+    title: 'Emoji',
+    description: 'Pick an emoji (or type : and a name)',
+    icon: 'smile',
+    hint: ':',
+    keywords: ['emoji', 'smiley', 'emoticon', 'icon', 'symbol'],
+    action: (editor) => insertEmoji(editor),
   },
   {
     id: 'image',

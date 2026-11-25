@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from app.deps import Db, UserAccess
 from app.schemas import DatabaseCreateIn, DatabaseUpdateIn, RowCreateIn, RowUpdateIn
@@ -28,8 +29,10 @@ def create_database(body: DatabaseCreateIn, access: UserAccess, db: Db) -> dict[
 
 
 @router.get("/{page_id}")
-def get_database(page_id: int, access: UserAccess, db: Db) -> dict[str, Any]:
-    return databases.detail(db, access, databases.require_database(access, page_id))
+def get_database(page_id: int, access: UserAccess, db: Db) -> JSONResponse:
+    # Plain data already (texts, numbers, lists): sent as it is, without every
+    # one of thousands of values being checked and copied once more.
+    return JSONResponse(databases.detail(db, access, databases.require_database(access, page_id)))
 
 
 @router.patch("/{page_id}")
@@ -37,10 +40,18 @@ def update_database(
     page_id: int, body: DatabaseUpdateIn, access: UserAccess, db: Db
 ) -> dict[str, Any]:
     page = databases.update_schema(
-        db, access, page_id, properties=body.properties, views=body.views
+        db,
+        access,
+        page_id,
+        properties=body.properties,
+        views=body.views,
+        color=body.color,
+        set_color="color" in body.model_fields_set,
     )
     db.commit()
-    return databases.detail(db, access, page)
+    # Rows only change when properties do (a deleted option, another type);
+    # a view that was resized or sorted does not need them sent back.
+    return databases.detail(db, access, page, with_rows=body.properties is not None)
 
 
 @router.post("/{page_id}/properties/{prop_id}/duplicate", status_code=201)
@@ -58,6 +69,7 @@ def create_row(page_id: int, body: RowCreateIn, access: UserAccess, db: Db) -> d
         page_id,
         title=body.title,
         props=body.props,
+        color=body.color,
         before_id=body.before_id,
         after_id=body.after_id,
     )

@@ -158,9 +158,33 @@
   accent-color: var(--cal-color, var(--accent));
 }
 .cal-source-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.cal-source-color {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--cal-color, var(--text-3));
+  cursor: pointer;
+  opacity: 0;
+}
+.cal-source:hover .cal-source-color,
+.cal-source-color:focus-visible {
+  opacity: 1;
+}
+.cal-source-color:hover {
+  background: var(--bg-active);
 }
 .cal-source[data-color],
 .cal-event[data-color] {
@@ -455,6 +479,10 @@ button.cal-week-number:hover {
 }
 .cal-day.is-outside .cal-day-number {
   opacity: 0.45;
+}
+/* Days of the neighbouring months: a grey so light it is barely there. */
+.cal-day.is-outside {
+  background: color-mix(in srgb, var(--text) 2.5%, transparent);
 }
 .cal-day.is-drop-target,
 .cal-allday-cell.is-drop-target {

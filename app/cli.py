@@ -25,11 +25,18 @@ def cmd_run(args: argparse.Namespace) -> int:
     settings = get_settings()
     if settings.auto_migrate:
         run_migrations()
+    workers = args.workers or settings.workers
+    if args.reload and workers > 1:
+        print("--reload runs a single process; ignoring --workers.", file=sys.stderr)
+        workers = 1
     uvicorn.run(
         "app.main:app",
         host=args.host or settings.host,
         port=args.port or settings.port,
         reload=args.reload,
+        # Each worker is its own process with its own database connections;
+        # SQLite (in WAL mode) lets them read at the same time.
+        workers=None if workers == 1 else workers,
         proxy_headers=True,
         forwarded_allow_ips=args.forwarded_allow_ips,
         log_level=settings.log_level.lower(),
@@ -176,6 +183,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--host")
     run.add_argument("--port", type=int)
     run.add_argument("--reload", action="store_true", help="Auto-reload on code changes")
+    run.add_argument(
+        "--workers",
+        type=int,
+        help="Worker processes (default: KAMISPACE_WORKERS, or 1)",
+    )
     run.add_argument(
         "--forwarded-allow-ips",
         default="127.0.0.1",

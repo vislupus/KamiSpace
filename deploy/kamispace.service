@@ -16,6 +16,9 @@ User=kamispace
 Group=kamispace
 WorkingDirectory=/opt/kamispace
 Environment=KAMISPACE_ENV=production
+# Worker processes: 1 for a small team, 2-4 (about one per CPU core) when many
+# people work at the same time. Can also be set as KAMISPACE_WORKERS in .env.
+#Environment=KAMISPACE_WORKERS=4
 Environment=UV_CACHE_DIR=/opt/kamispace/.uv-cache
 Environment=UV_PYTHON_INSTALL_DIR=/opt/kamispace/.python
 # --frozen: use exactly the versions in uv.lock; --no-dev: skip test tooling.
