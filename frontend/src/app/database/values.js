@@ -1,9 +1,10 @@
 // Property types of a database: how a value is shown, edited, compared,
 // filtered and summed up. Shared by the table, the board and the property
 // list at the top of a row's page.
-import { addDays, formatDateTime, parseTime } from '../../lib/bgcalendar.js';
+import { addDays, formatDateTime, now, parseTime } from '../../lib/bgcalendar.js';
 import { createMonthPicker, dateInput, timeInput } from '../../lib/datepicker.js';
 import { h } from '../../lib/dom.js';
+import { FormulaError, dateValue, evaluate, isDate, sameName, toText } from '../../lib/formula.js';
 import { icon } from '../../lib/icons.js';
 import { openMenu } from '../../lib/menu.js';
 import { openPopover } from '../../lib/popover.js';
@@ -21,9 +22,10 @@ export const TYPES = {
   person: { label: 'Person', icon: 'users' },
   checkbox: { label: 'Checkbox', icon: 'checkbox' },
   url: { label: 'URL', icon: 'link' },
+  formula: { label: 'Formula', icon: 'formula' },
 };
 /** Types offered when adding a property (a database has exactly one title). */
-export const ADDABLE_TYPES = Object.keys(TYPES).filter((type) => type !== 'title');
+export const ADDABLE_TYPES = Object.keys(TYPES).filter((type) => type !== 'title' && type !== 'formula');
 export const COLORS = ['default', 'gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
 export const NUMBER_FORMATS = [
   ['number', 'Number'],
@@ -46,8 +48,21 @@ function nextColor(options) {
   return COLORS.slice(1).find((color) => !used.has(color)) ?? COLORS[1 + (options.length % 9)];
 }
 
+/** What a formula gives when it cannot be calculated. */
+export class FormulaFailure {
+  constructor(message) {
+    this.message = message;
+  }
+}
+
 export function isEmpty(value) {
-  return value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length);
+  return (
+    value === null ||
+    value === undefined ||
+    value === '' ||
+    (Array.isArray(value) && !value.length) ||
+    value instanceof FormulaFailure
+  );
 }
 
 /** "23.11.2026", or "23.11.2026 14:30" for a date with a time. */
@@ -57,9 +72,109 @@ function formatNumber(value) {
   return Number(value).toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
+// -- formulas ---------------------------------------------------------------------
+
+/** Property → all properties of its database: a formula reads the others by name. */
+const schemas = new WeakMap();
+
+/** Tell the formulas of a database which properties it has. Cheap; call it whenever they change. */
+export function bindSchema(properties) {
+  for (const prop of properties) schemas.set(prop, properties);
+  return properties;
+}
+
+/** A stored value the way a formula sees it. */
+function formulaInput(row, prop) {
+  const value = prop.type === 'title' ? row.title : (row.props?.[prop.id] ?? null);
+  switch (prop.type) {
+    case 'checkbox':
+      return value === true;
+    case 'select':
+    case 'status':
+      return prop.options?.find((option) => option.id === value)?.name ?? null;
+    case 'multi_select':
+      return (value ?? []).map((id) => prop.options?.find((option) => option.id === id)?.name).filter(Boolean);
+    case 'person':
+      return (value ?? []).map((id) => userName(id)).filter(Boolean);
+    case 'date':
+      return value?.start ? dateValue(value.start, value.end) : null;
+    default:
+      return value === '' ? null : value;
+  }
+}
+
+/** Row → the formulas calculated for it, until something they read changes. */
+const calculated = new WeakMap();
+
+function formulaValue(row, prop, trail = []) {
+  const properties = schemas.get(prop) ?? [prop];
+  const today = now().date;
+  let cache = calculated.get(row);
+  if (!cache || cache.props !== row.props || cache.title !== row.title || cache.properties !== properties || cache.today !== today) {
+    cache = { props: row.props, title: row.title, properties, today, values: new Map() };
+    calculated.set(row, cache);
+  }
+  if (cache.values.has(prop.id)) return cache.values.get(prop.id);
+  let value = null;
+  if ((prop.expression ?? '').trim()) {
+    const result = evaluate(prop.expression, {
+      today,
+      prop(name) {
+        const target = properties.find((item) => sameName(item.name, name));
+        if (!target) throw new FormulaError(`There is no property “${name}”`);
+        if (target.type !== 'formula') return formulaInput(row, target);
+        if (target === prop || trail.includes(target.id)) throw new FormulaError('The formula refers to itself');
+        const inner = formulaValue(row, target, [...trail, prop.id]);
+        if (inner instanceof FormulaFailure) throw new FormulaError(`${target.name}: ${inner.message}`);
+        return inner;
+      },
+    });
+    value = 'error' in result ? new FormulaFailure(result.error) : result.value;
+  }
+  // Inside another formula the answer may be cut short by a loop: only what
+  // was calculated from the top is remembered.
+  if (!trail.length) cache.values.set(prop.id, value);
+  return value;
+}
+
 /** The value of a property for a row (the title lives on the row itself). */
 export function valueOf(row, prop) {
+  if (prop.type === 'formula') return formulaValue(row, prop);
   return prop.type === 'title' ? row.title : (row.props?.[prop.id] ?? null);
+}
+
+/** Check a formula against a database: null when it is fine, or what is wrong. */
+export function formulaProblem(expression, prop, properties, row = null) {
+  if (!expression.trim()) return null;
+  const trial = { ...prop, expression };
+  const all = properties.map((item) => (item.id === prop.id ? trial : item));
+  bindSchema(all);
+  const value = formulaValue(row ?? { id: 0, title: '', props: {} }, trial);
+  bindSchema(properties);
+  return value instanceof FormulaFailure ? value.message : null;
+}
+
+/** What a formula would show for a row, as text (for the preview in its editor). */
+export function formulaPreview(expression, prop, properties, row) {
+  const trial = { ...prop, expression };
+  const all = properties.map((item) => (item.id === prop.id ? trial : item));
+  bindSchema(all);
+  const value = formulaValue(row, trial);
+  bindSchema(properties);
+  return value instanceof FormulaFailure ? { error: value.message } : { text: toText(value) };
+}
+
+function renderFormula(prop, value) {
+  if (value instanceof FormulaFailure) {
+    return h('span', { class: 'db-formula-error', title: value.message }, icon('warning', 13), 'Error');
+  }
+  if (isEmpty(value)) return null;
+  if (typeof value === 'number') return renderValue({ ...prop, type: 'number' }, value);
+  if (typeof value === 'boolean') {
+    return h('input', { type: 'checkbox', class: 'db-checkbox', checked: value, disabled: true, tabIndex: -1, 'aria-label': prop.name });
+  }
+  if (isDate(value)) return h('span', { class: 'db-date' }, toText(value));
+  return h('span', { class: 'db-text' }, toText(value));
 }
 
 // -- showing ----------------------------------------------------------------------
@@ -101,6 +216,7 @@ export function personChip(userId) {
 
 /** DOM for a value, or null when there is nothing to show. */
 export function renderValue(prop, value) {
+  if (prop.type === 'formula') return renderFormula(prop, value);
   if (isEmpty(value) && prop.type !== 'checkbox') return null;
   switch (prop.type) {
     case 'title':
@@ -164,7 +280,7 @@ export function renderValue(prop, value) {
 // -- editing ----------------------------------------------------------------------
 
 /** An input laid exactly over the cell, the way Notion edits text and numbers. */
-function editInline(prop, value, anchor, onChange) {
+function editInline(prop, value, anchor, onChange, onTab = null) {
   const multiline = prop.type === 'text';
   const input = h(multiline ? 'textarea' : 'input', {
     class: 'db-inline-input',
@@ -213,6 +329,11 @@ function editInline(prop, value, anchor, onChange) {
     } else if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       popover.close();
+    } else if (event.key === 'Tab' && onTab) {
+      // The value is stored, then the next cell (or the one before) opens.
+      event.preventDefault();
+      popover.close();
+      onTab(event.shiftKey ? -1 : 1);
     }
   });
   grow();
@@ -824,8 +945,11 @@ function editPeople(prop, value, anchor, onChange) {
  * onChange(value) stores the value; onProperty(prop) stores a changed
  * property (new or edited options).
  */
-export function editValue(prop, value, anchor, { onChange, onProperty }) {
+export function editValue(prop, value, anchor, { onChange, onProperty, onTab = null }) {
   switch (prop.type) {
+    case 'formula':
+      // Calculated: there is nothing to type into the cell.
+      break;
     case 'checkbox':
       onChange(value === true ? null : true);
       break;
@@ -841,7 +965,7 @@ export function editValue(prop, value, anchor, { onChange, onProperty }) {
       editPeople(prop, value, anchor, onChange);
       break;
     default:
-      editInline(prop, value, anchor, onChange);
+      editInline(prop, value, anchor, onChange, onTab);
   }
 }
 
@@ -850,6 +974,10 @@ export function editValue(prop, value, anchor, { onChange, onProperty }) {
 function sortKey(prop, value) {
   if (isEmpty(value)) return null;
   switch (prop.type) {
+    case 'formula':
+      if (typeof value === 'number') return value;
+      if (typeof value === 'boolean') return value ? 1 : 0;
+      return isDate(value) ? value.start : toText(value).toLowerCase();
     case 'number':
       return Number(value);
     case 'select':
@@ -877,7 +1005,8 @@ export function compareRows(a, b, prop, direction) {
   // Empty values go last, whichever way the sort runs.
   if (left === null) return 1;
   if (right === null) return -1;
-  const order = typeof left === 'number' ? left - right : String(left).localeCompare(String(right));
+  const order =
+    typeof left === 'number' && typeof right === 'number' ? left - right : String(left).localeCompare(String(right));
   return direction === 'desc' ? -order : order;
 }
 
@@ -885,6 +1014,8 @@ export function compareRows(a, b, prop, direction) {
 export function textOf(prop, value) {
   if (isEmpty(value)) return '';
   switch (prop.type) {
+    case 'formula':
+      return toText(value);
     case 'select':
     case 'status':
       return prop.options?.find((option) => option.id === value)?.name ?? '';
@@ -904,6 +1035,16 @@ export function textOf(prop, value) {
 /** Filter operators that make sense for a property type: [op, label, needsValue]. */
 export function filterOps(prop) {
   switch (prop.type) {
+    case 'formula':
+      return [
+        ['is', '=', true],
+        ['is_not', '≠', true],
+        ['gt', '>', true],
+        ['lt', '<', true],
+        ['contains', 'Contains', true],
+        ['empty', 'Is empty', false],
+        ['not_empty', 'Is not empty', false],
+      ];
     case 'checkbox':
       return [
         ['checked', 'Is checked', false],
@@ -965,6 +1106,23 @@ export function matchesFilter(row, prop, rule) {
   if (isEmpty(wanted)) return true;
   const list = Array.isArray(value) ? value.map(String) : isEmpty(value) ? [] : [String(value)];
   switch (prop.type) {
+    case 'formula': {
+      if (isEmpty(value)) return rule.op === 'is_not';
+      const target = Number(String(wanted).replace(',', '.'));
+      if (typeof value === 'number' && Number.isFinite(target)) {
+        if (rule.op === 'gt') return value > target;
+        if (rule.op === 'lt') return value < target;
+        if (rule.op === 'is') return value === target;
+        if (rule.op === 'is_not') return value !== target;
+      }
+      const text = toText(value).toLowerCase();
+      const needle = String(wanted).toLowerCase();
+      if (rule.op === 'gt') return text > needle;
+      if (rule.op === 'lt') return text < needle;
+      if (rule.op === 'is') return text === needle;
+      if (rule.op === 'is_not') return text !== needle;
+      return text.includes(needle);
+    }
     case 'select':
     case 'status':
     case 'multi_select':
@@ -1012,7 +1170,7 @@ export function calculate(name, rows, prop) {
   if (name === 'count') return rows.length;
   if (name === 'values') return filled.length;
   if (name === 'empty') return rows.length - filled.length;
-  const numbers = filled.map(Number).filter((value) => Number.isFinite(value));
+  const numbers = filled.filter((value) => typeof value !== 'object').map(Number).filter((value) => Number.isFinite(value));
   if (!numbers.length) return null;
   const sum = numbers.reduce((total, value) => total + value, 0);
   if (name === 'sum') return formatNumber(Math.round(sum * 1e6) / 1e6);

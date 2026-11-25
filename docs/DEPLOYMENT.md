@@ -97,8 +97,39 @@ The server listens on `127.0.0.1:8000` only; it is reached through the reverse
 proxy. Logs: `journalctl -u kamispace -f` (server) and
 `/opt/kamispace/data/logs/kamispace.log` (application errors).
 
-KamiSpace runs as **one process**. Do not start several workers: SQLite prefers
-a single writer process, and one process serves a team without trouble.
+### How many worker processes?
+
+One process serves a small team without trouble, and it is the default. When
+many people work at the same time, start several: each worker is a process of
+its own, so the server uses more than one CPU core. They share the database
+file — SQLite (in WAL mode) lets all of them read at once and takes writers in
+turn — and the log file.
+
+```bash
+# in .env
+KAMISPACE_WORKERS=4
+```
+
+```bash
+sudo systemctl restart kamispace
+```
+
+or on the command line: `python -m app run --workers 4`. A service that starts
+uvicorn itself takes the same option:
+`uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 4`.
+
+About one worker per CPU core, and not more than the machine has: 2 for up to
+a few dozen people, 4 for more. Each worker uses roughly 80–120 MB of memory.
+Measured on a 4-core machine with 24 people reading and writing a 300-row
+database at once: one worker answers about 25 requests a second, four answer
+about 110.
+
+Two things have to hold for several workers:
+
+- the data directory is on a **local disk** (not NFS / SMB, where the file
+  locks SQLite relies on are unreliable);
+- all workers belong to the **same installation**. Two installations (two
+  checkouts, an old and a new release) must never share one data directory.
 
 ## 7. Reverse proxy and HTTPS
 
@@ -281,7 +312,7 @@ curl -s http://127.0.0.1:8000/healthz
 ```
 
 It answers with the version and whether the database fits it, for example
-`{"status":"ok","version":"0.2.0","schema":"ok","revision":"0003"}`. An answer
+`{"status":"ok","version":"0.3.0","schema":"ok","revision":"0003"}`. An answer
 without `version` comes from a release older than 0.2.0. And to see which code and
 which data a command (or the service's own environment) is using:
 
@@ -290,7 +321,7 @@ sudo -u kamispace uv run --frozen --no-dev python -m app status
 ```
 
 ```text
-KamiSpace 0.2.0 (needs schema revision 0003)
+KamiSpace 0.3.0 (needs schema revision 0003)
 Code:       /opt/kamispace
 Migrations: /opt/kamispace/migrations/versions (newest: 0003)
 Data:       /opt/kamispace/data
@@ -327,4 +358,5 @@ environment (`KAMISPACE_DATA_DIR`, `.env`).
 | "Invalid host header" | Add the host name to `KAMISPACE_ALLOWED_HOSTS` |
 | Uploads fail with 413 | Raise `client_max_body_size` (nginx) and `KAMISPACE_MAX_UPLOAD_MB` |
 | Locked out of the admin account | `uv run python -m app reset-password <username>` on the server |
-| "database is locked" errors | Make sure only one KamiSpace process uses the data directory |
+| "database is locked" errors | Only one KamiSpace *installation* may use a data directory (its own workers share it fine); the directory must be on a local disk, not a network share |
+| Slow with many people at once | Start more workers (section 6): `KAMISPACE_WORKERS=4`. `curl -s -o /dev/null -w '%{time_total}\n' http://127.0.0.1:8000/healthz` should answer in a few milliseconds; if it does and pages are still slow, look at the proxy and the network |

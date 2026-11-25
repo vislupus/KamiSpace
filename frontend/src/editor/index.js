@@ -20,6 +20,7 @@ import { Highlight, TextColor } from './extensions/colors.js';
 import { Column, Columns } from './extensions/columns.js';
 import { Divider } from './extensions/divider.js';
 import { Embed } from './extensions/embed.js';
+import { Emoji } from './extensions/emoji.js';
 import { BlockEquation, InlineEquation } from './extensions/equation.js';
 import { ImageBlock } from './extensions/image.js';
 import { LinkEditor } from './extensions/link-editor.js';
@@ -121,6 +122,7 @@ export function createEditor({
         }),
         SlashCommands,
         PageMentions,
+        Emoji,
         BlockHandle,
         BubbleToolbar,
         TableControls,

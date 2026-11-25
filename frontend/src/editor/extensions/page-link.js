@@ -32,7 +32,8 @@ function linkView({ tag, className }) {
       const page = context.getPage(pageId);
       dom.classList.toggle('is-missing', !page);
       dom.replaceChildren(
-        h('span', { class: 'page-link-icon' }, page?.icon || icon('file-text', 15)),
+        // A database is linked like any page, and shown as what it is.
+        h('span', { class: 'page-link-icon' }, page?.icon || icon(page?.kind === 'database' ? 'database' : 'file-text', 15)),
         h('span', { class: 'page-link-title' }, page ? page.title || 'Untitled' : 'Page not available'),
       );
     };
@@ -248,8 +249,9 @@ function mentionSuggestion(editor, char, pluginKey) {
               h('span', { class: 'slash-title' }, `New sub-page “${item.title}”`),
             ]
           : [
-              h('span', { class: 'mention-icon' }, item.page.icon || icon('file-text', 16)),
+              h('span', { class: 'mention-icon' }, item.page.icon || icon(item.page.kind === 'database' ? 'database' : 'file-text', 16)),
               h('span', { class: 'slash-title' }, item.page.title || 'Untitled'),
+              item.page.kind === 'database' ? h('span', { class: 'slash-hint' }, 'Database') : null,
             ],
     }),
   });

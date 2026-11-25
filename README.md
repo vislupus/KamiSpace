@@ -151,8 +151,11 @@ Then put a reverse proxy with HTTPS in front of it and run it as a service:
 - `deploy/nginx.conf.example` — nginx reverse proxy (HTTPS via certbot)
 - `deploy/Caddyfile.example` — Caddy alternative (automatic HTTPS)
 
-Run a **single** server process. SQLite in WAL mode handles a team comfortably,
-and one process keeps things simple; requests are served from a thread pool.
+One server process handles a small team comfortably (requests are served from
+a thread pool). When many people work at the same time, start several workers
+— `KAMISPACE_WORKERS=4` in `.env`, or `python -m app run --workers 4`; they
+share the SQLite database (WAL mode) safely. See *How many worker processes?*
+in `docs/DEPLOYMENT.md`.
 
 ## Configuration
 
@@ -164,6 +167,7 @@ full, commented list. The most relevant ones:
 |---|---|---|
 | `KAMISPACE_ENV` | `development` | `production` hides API docs and caches the asset manifest |
 | `KAMISPACE_HOST` / `KAMISPACE_PORT` | `127.0.0.1` / `8000` | Listen address |
+| `KAMISPACE_WORKERS` | `1` | Worker processes of `python -m app run`; 2–4 when many people work at once |
 | `KAMISPACE_DATA_DIR` | `data` | Where all persistent data lives (relative to the project) |
 | `KAMISPACE_ALLOWED_HOSTS` | *(any)* | Comma separated host names to accept |
 | `KAMISPACE_COOKIE_SECURE` | `auto` | `always` behind HTTPS |
@@ -262,7 +266,16 @@ Backspace right after a conversion — or Ctrl+Z — turns it back.
 `/toggleh1` `/toggleh2` `/toggleh3` `/quote` `/code` `/callout` `/divider`
 `/table` `/columns2` `/columns3` `/columns4` `/page` `/linkpage` `/image`
 `/video` `/audio` `/file` `/embed` `/bookmark` `/equation` `/inlineequation`
-`/link` `/database` `/board`
+`/link` `/emoji` `/database` `/database-page` `/board` `/board-page`
+`/linked-database`
+
+**Emoji** — in the text, type `:` and a few letters of a name (`:rocket`,
+`:сърце`) and pick from the list at the caret; a finished shortcode turns into
+its emoji by itself (`:fire:` → 🔥); `/emoji` opens the whole picker. The
+picker (also used for page icons) has the complete Unicode set in nine groups,
+remembers the ones you used last, and searches names and keywords in English
+and Bulgarian. The emoji data is part of the application — nothing is fetched
+from the internet — and emoji your computer's fonts cannot draw are left out.
 
 **Blocks** — every line is a block, wherever it lives: on the page, inside a
 toggle, a column, a callout, a quote, or as an item of a list. Hover a block
@@ -330,11 +343,41 @@ fetched from the internet.
   Without a database yet, the calendar offers to create an *Events* one.
 - A *Date* property can include a time (*Include time* in its editor) and an
   end. Every date in the app is chosen from the same month grid.
+- **Colours**: every calendar (database) has a colour — hover it in the list
+  on the left and press the palette to choose one. A single row can have a
+  colour of its own, which wins: right-click the event (or the row in its
+  table) → *Color*. *Same as the calendar* goes back to the database's colour.
 
 **Databases** — `/database` puts a table into the page, `/board` a Kanban
 board. Both are views of the same thing: a set of rows, where every row is a
 page of its own with *properties* (status, person, date, number, select,
-multi-select, checkbox, URL, text).
+multi-select, checkbox, URL, text, formula).
+
+- *Inline or full page*, as in Notion: `/database` and `/board` show the
+  database inside the page you are writing; `/database-page` and
+  `/board-page` make it a page of its own that is only linked here (and open
+  it). `/linked-database` shows a database that already exists somewhere else
+  — both places show the same rows. A database is linked and mentioned like
+  any page (`@`, `[[`, *Link to page*) and carries a database icon.
+- *Formulas*: `+` → **Calculated** offers ready-made columns that need no
+  writing — *Number of days* (from a date to a date, both counted), *Working
+  days* (without weekends and Bulgarian public holidays), *Days left* (from
+  today), *Calculation* (two numbers added, subtracted, multiplied, divided,
+  or one as a percentage of the other) — and *Formula* to write your own:
+  `prop("Price") * prop("Quantity")`,
+  `if(daysUntil(prop("Deadline")) < 0, "Late", "On time")`. The editor lists
+  the properties and functions (dates, numbers, logic, text), inserts them
+  with a click, explains mistakes while you type and shows the result for the
+  first row. Formulas are calculated as you enter data, can be sorted,
+  filtered and summed like any column, and follow a property when it is
+  renamed. Empty inputs give an empty result, not an error.
+- *Entering data*: **Tab** stores the cell and opens the next one, Shift+Tab
+  the one before, Enter stores and closes, Esc cancels. Only the row you
+  changed is redrawn, so a table of thousands of rows stays quick.
+- *Colour of a row*: right-click a row → *Color*. It marks the row in the
+  table and on the board and is the colour of its entry in the calendar. The
+  colour of the whole database (for rows without their own) is under the
+  view's options → *Color in the calendar*.
 
 - *Table*: click a cell to edit it; **New** or *+ New page* adds a row and
   starts typing its name. Click a column header — or right-click it — for the
@@ -452,7 +495,8 @@ down (or use the arrow keys), then *Save position*.
 | Ctrl+Shift+S, Ctrl+E | Strikethrough, inline code |
 | Ctrl+Shift+H | Highlight |
 | Ctrl+Shift+E | Inline equation |
-| Tab / Shift+Tab | Indent / outdent a list item; move a block into / out of the toggle above it; next / previous table cell |
+| Tab / Shift+Tab | Indent / outdent a list item; move a block into / out of the toggle above it; next / previous table cell; in a database: store the cell and edit the next / previous one |
+| `:` and a name | Emoji at the caret (`:rocket`, `:сърце`, `:fire:`) |
 | Enter / Shift+Enter in a table | Cell below (a new row at the end) / line break inside the cell |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | T · Y / M / W / D · ← / → | Calendar: today · year, month, week, day view · previous / next |
@@ -582,7 +626,9 @@ automated tests.
 | Calendar | Year / month / week / day views; Monday-first ISO weeks with week numbers; DD.MM.YYYY and 24-hour time; Europe/Sofia with clock changes; Bulgarian official holidays, Orthodox Easter and days in lieu, calculated offline; dated database rows (with or without time, ranges) and due tasks; new events, drag to another day |
 | Tables | Notion-style simple tables: add bars with drag, row / column handles with menus and drag-to-move, header row / column, column resize, framed current cell, Enter / Tab navigation |
 | Keyboard and mouse | Block selection (Esc, arrows, Enter, Delete), Ctrl+Shift+0…9 turn-into, layout-independent shortcuts (work on a Cyrillic layout), middle button / Ctrl+click to open in a new tab |
-| Databases | Inline or full-page; rows are pages; properties: title, text, number (plain, percent, progress bar), select, multi-select, status, date (with end date), person, checkbox, URL; table view (inline editing, resize and reorder columns, drag rows, calculations) and board view (group by status / select / person, drag cards); several views per database with filters, sorts, search and hidden properties; row pages with a property list; permissions, recycle bin and search as for pages |
+| Databases | Inline, full-page (linked from the page) or a linked view of an existing database; rows are pages; properties: title, text, number (plain, percent, progress bar), select, multi-select, status, date (with end date), person, checkbox, URL, formula; formulas with ready-made columns (number of days, working days, days left, calculation) and an editor with functions for dates, numbers, logic and text; table view (inline editing with Tab between cells, resize and reorder columns, drag rows, calculations) and board view (group by status / select / person, drag cards); a colour per row and per database, used by the calendar; several views per database with filters, sorts, search and hidden properties; row pages with a property list; permissions, recycle bin and search as for pages |
+| Emoji | The complete Unicode set, bundled; search in English and Bulgarian; recently used; `:name` at the caret and `/emoji`; emoji the system fonts cannot draw are left out |
+| Many users | Several worker processes on one server (`KAMISPACE_WORKERS`); answers of any size in a fixed number of queries; gzip; writers queue instead of failing |
 | Search | SQLite FTS5 over titles, content and page hierarchy; prefix matching, ranked, highlighted snippets, permission filtered; Ctrl+K palette with keyboard navigation |
 | Accounts | Username and password only, changeable username, Argon2id hashes, server-side sessions in HttpOnly cookies, idle and absolute expiry, CSRF protection, sign-in rate limiting, change password, list and revoke own sessions |
 | Administration | Create and rename users, invitation links, optional open registration, deactivate, reset password, admin role, team workspaces and members, activity log |
@@ -604,7 +650,7 @@ automated tests.
 | Web bookmarks | Title and description are fetched by the server, which therefore needs outbound internet access (and no proxy in between). Without it the card shows the address |
 | Markdown export | Pictures and files are referenced, not bundled, so a `.md` file imports with its pictures only on the same KamiSpace instance. Text colours, assignees and due dates are not written to Markdown |
 | Tasks | The assignee is not notified (nothing is emailed); they see the task in "My tasks". Rows of a database that have a person are not listed there — "My tasks" covers to-do items |
-| Databases | The side peek is not part of the address: reloading the browser closes it. No relations between databases, roll-ups or formulas; views are table and board (no timeline or gallery; the Calendar shows the dated rows of all databases together). Property values are not part of version history and are not searched (row names and page text are). Deleting the database block from a page leaves the database as a sub-page; delete that page to remove it. Two people editing the same database see each other's changes after reloading |
+| Databases | The side peek is not part of the address: reloading the browser closes it. No relations between databases or roll-ups; a formula reads the values of its own row only, is calculated in the browser (so it is not in exports and the calendar does not show formula dates), and skin tones of emoji cannot be chosen; views are table and board (no timeline or gallery; the Calendar shows the dated rows of all databases together). Property values are not part of version history and are not searched (row names and page text are). Deleting the database block from a page leaves the database as a sub-page; delete that page to remove it. Two people editing the same database see each other's changes after reloading |
 | Images | Width is kept as a percentage of the text column (10–100 %). Pictures cannot be cropped, and text does not wrap around them |
 | Links | Clicking a link opens it (as in Notion); to change its text, edit around it or use *Edit link* on the hover card. The hover card needs a pointer |
 | Touch devices | Reading and typing work and the layout adapts, but block handles and drag-and-drop need a pointer |

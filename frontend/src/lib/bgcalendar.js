@@ -224,8 +224,22 @@ export function holidays(year) {
 }
 
 /** The holiday entries of one day (usually none, sometimes two: 1 May on Holy Saturday). */
+const NONE = Object.freeze([]);
+const byDay = new Map();
+
+/** The holidays and days off on one day. Looked up, not searched: calendars ask for every day they draw. */
 export function holidaysOn(value) {
-  return holidays(parts(value).year).filter((item) => item.date === value);
+  const year = parts(value).year;
+  let index = byDay.get(year);
+  if (!index) {
+    index = new Map();
+    for (const item of holidays(year)) {
+      if (index.has(item.date)) index.get(item.date).push(item);
+      else index.set(item.date, [item]);
+    }
+    byDay.set(year, index);
+  }
+  return index.get(value) ?? NONE;
 }
 
 /** Saturday, Sunday or an official day off. */

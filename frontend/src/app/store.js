@@ -24,7 +24,25 @@ export function on(event, handler) {
 }
 
 export function emit(event, payload) {
+  // The tree changed: what was worked out from it is worked out again.
+  if (event === 'tree') childIndex = null;
   for (const handler of listeners.get(event) ?? []) handler(payload);
+}
+
+/** Parent id → its pages (rows of databases left out), built once per change of the tree. */
+let childIndex = null;
+
+function children() {
+  if (!childIndex) {
+    childIndex = new Map();
+    for (const page of store.pages.values()) {
+      if (page.is_row) continue;
+      const list = childIndex.get(page.parent_id);
+      if (list) list.push(page);
+      else childIndex.set(page.parent_id, [page]);
+    }
+  }
+  return childIndex;
 }
 
 function applyTree(data) {
@@ -64,23 +82,15 @@ function byPosition(a, b) {
 
 /** Children of a page, or the top-level pages of a workspace section. */
 export function childrenOf(parentId) {
-  const result = [];
-  for (const page of store.pages.values()) {
-    // Rows of a database are pages too, but they live in the database, not
-    // in the page tree.
-    if (page.parent_id === parentId && !page.is_row) result.push(page);
-  }
-  return result.sort(byPosition);
+  // Rows of a database are pages too, but they live in the database, not in
+  // the page tree.
+  return [...(children().get(parentId) ?? [])].sort(byPosition);
 }
 
 export function rootPages(workspaceId) {
-  const result = [];
-  for (const page of store.pages.values()) {
-    if (page.parent_id === null && page.workspace_id === workspaceId && !page.shared) {
-      result.push(page);
-    }
-  }
-  return result.sort(byPosition);
+  return (children().get(null) ?? [])
+    .filter((page) => page.workspace_id === workspaceId && !page.shared)
+    .sort(byPosition);
 }
 
 /** Roots of subtrees that were shared with the user by somebody else. */
@@ -93,10 +103,7 @@ export function sharedRoots() {
 }
 
 export function hasChildren(pageId) {
-  for (const page of store.pages.values()) {
-    if (page.parent_id === pageId && !page.is_row) return true;
-  }
-  return false;
+  return children().has(pageId);
 }
 
 export function ancestorsOf(pageId) {
@@ -131,6 +138,37 @@ export function patchPage(id, changes) {
   const page = store.pages.get(id);
   if (!page) return;
   Object.assign(page, changes);
+  emit('tree');
+}
+
+/**
+ * A row was added to a database: known at once, without asking the server
+ * for the whole tree again. Rows are not in the sidebar, so nothing redraws.
+ */
+export function addRowPage(databaseId, row) {
+  const database = store.pages.get(databaseId);
+  if (!database || store.pages.has(row.id)) return;
+  store.pages.set(row.id, {
+    id: row.id,
+    workspace_id: database.workspace_id,
+    parent_id: databaseId,
+    title: row.title,
+    icon: row.icon,
+    position: row.position,
+    updated_at: row.updated_at,
+    role: database.role,
+    kind: 'page',
+    is_row: true,
+    shared: database.shared,
+  });
+}
+
+/** A page left the tree (moved to the recycle bin): forget it and what is under it. */
+export function removePage(id) {
+  const gone = [id, ...descendantIds(id)];
+  for (const pageId of gone) store.pages.delete(pageId);
+  store.favorites = store.favorites.filter((pageId) => !gone.includes(pageId));
+  store.recents = store.recents.filter((pageId) => !gone.includes(pageId));
   emit('tree');
 }
 

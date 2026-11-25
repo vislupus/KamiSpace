@@ -58,7 +58,7 @@ export function renderBoard(ctx) {
           draggable: editable,
           tabIndex: 0,
           role: 'link',
-          dataset: { row: row.id },
+          dataset: { row: row.id, ...(row.color ? { color: row.color } : {}) },
         },
         title,
         cardProperties.map((prop) => {

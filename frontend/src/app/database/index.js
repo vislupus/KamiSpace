@@ -13,13 +13,17 @@ import { debounce, storageGet, storageSet } from '../../lib/util.js';
 import { copyPageLink, openPage, wantsNewTab } from '../actions.js';
 import { openPeek, peekedPageId } from '../peek.js';
 import { pagePath } from '../router.js';
-import { on, patchPage, refreshTree, store } from '../store.js';
+import { addRowPage, on, patchPage, refreshTree, removePage, store } from '../store.js';
 import { renderBoard } from './board.js';
+import { PRESETS, openFormulaEditor, openPresetBuilder } from './formula-editor.js';
 import { renderTable } from './table.js';
+import { renameProperty } from '../../lib/formula.js';
 import {
   ADDABLE_TYPES,
   CALCULATIONS,
+  COLORS,
   TYPES,
+  bindSchema,
   compareRows,
   filterOps,
   hasOptions,
@@ -134,10 +138,11 @@ export function mountDatabase({ container, databaseId, inline = false }) {
       const changed = !same(result.properties, db.properties) || !same(result.views, db.views);
       db.properties = result.properties;
       db.views = result.views;
+      db.color = result.color;
       // A changed property can drop values (a deleted option, another type).
       // Rows that are being saved right now keep what the user just entered.
       let rowsChanged = false;
-      for (const fresh of body.properties ? result.rows : []) {
+      for (const fresh of result.rows ?? []) {
         const local = db.rows.find((row) => row.id === fresh.id);
         if (local && !rowSaves.get(local.id) && !same(local.props, fresh.props)) {
           local.props = fresh.props;
@@ -177,6 +182,7 @@ export function mountDatabase({ container, databaseId, inline = false }) {
 
   async function updateRow(row, changes) {
     if (changes.title !== undefined) row.title = changes.title;
+    if (changes.color !== undefined) row.color = changes.color;
     if (changes.props) {
       row.props = { ...row.props };
       for (const [id, value] of Object.entries(changes.props)) {
@@ -184,7 +190,7 @@ export function mountDatabase({ container, databaseId, inline = false }) {
         else row.props[id] = value;
       }
     }
-    renderBody();
+    refreshRows([row.id]);
     rowSaves.set(row.id, (rowSaves.get(row.id) ?? 0) + 1);
     try {
       await schemaSaves;
@@ -193,10 +199,10 @@ export function mountDatabase({ container, databaseId, inline = false }) {
       if (destroyed) return;
       // Only the last answer for a row is the truth; earlier ones are behind.
       if (rowSaves.get(row.id)) return;
-      const differs = !same(saved.props, row.props) || saved.title !== row.title;
+      const differs = !same(saved.props, row.props) || saved.title !== row.title || saved.color !== row.color;
       Object.assign(row, saved);
       if (changes.title !== undefined) patchPage(row.id, { title: saved.title });
-      if (differs) renderBody();
+      if (differs) refreshRows([row.id]);
     } catch (error) {
       rowSaves.set(row.id, 0);
       toastError(error, 'Could not save the change');
@@ -236,9 +242,10 @@ export function mountDatabase({ container, databaseId, inline = false }) {
       db.rows.forEach((item, position) => {
         item.position = position + 1;
       });
+      // Known to the rest of the application at once; the tree is not fetched again.
+      addRowPage(databaseId, row);
       if (edit) editTitleOf = row.id;
-      renderBody();
-      refreshTree();
+      refreshRows();
       return row;
     } catch (error) {
       toastError(error, 'Could not add a row');
@@ -251,8 +258,8 @@ export function mountDatabase({ container, databaseId, inline = false }) {
       await api.delete(`/api/pages/${row.id}`);
       if (destroyed) return;
       db.rows = db.rows.filter((item) => item.id !== row.id);
-      renderBody();
-      refreshTree();
+      refreshRows();
+      removePage(row.id);
       toast('Moved to the recycle bin', {
         action: {
           label: 'Undo',
@@ -284,7 +291,7 @@ export function mountDatabase({ container, databaseId, inline = false }) {
       item.position = position + 1;
     });
     db.rows = rows;
-    renderBody();
+    refreshRows();
     try {
       await api.patch(`${url}/rows/${row.id}`, { before_id: beforeId, after_id: afterId });
     } catch (error) {
@@ -295,7 +302,8 @@ export function mountDatabase({ container, databaseId, inline = false }) {
 
   // -- property menus ---------------------------------------------------------------
 
-  function chooseType(anchor, onPick, placement = 'bottom-end') {
+  /** `onPick(type)` for a plain property, `onPreset(preset)` for a calculated one. */
+  function chooseType(anchor, onPick, onPreset, placement = 'bottom-end') {
     openMenu({
       anchor,
       placement,
@@ -306,15 +314,33 @@ export function mountDatabase({ container, databaseId, inline = false }) {
           icon: TYPES[type].icon,
           onSelect: () => onPick(type),
         })),
+        { separator: true },
+        { heading: 'Calculated' },
+        ...PRESETS.map((preset) => ({
+          label: preset.label,
+          icon: preset.icon,
+          description: preset.description,
+          onSelect: () => onPreset(preset),
+        })),
       ],
     });
   }
 
+  /** A name no other property has: "Days", "Days 2"… */
+  function freeName(wanted) {
+    const used = new Set(db.properties.map((prop) => prop.name.toLowerCase()));
+    let name = wanted;
+    for (let n = 2; used.has(name.toLowerCase()); n += 1) name = `${wanted} ${n}`;
+    return name;
+  }
+
   function newProperty(type) {
-    const used = new Set(db.properties.map((prop) => prop.name));
-    let name = TYPES[type].label;
-    for (let n = 2; used.has(name); n += 1) name = `${TYPES[type].label} ${n}`;
+    const name = freeName(TYPES[type].label);
     const prop = { id: newId('p'), name, type };
+    if (type === 'formula') {
+      prop.expression = '';
+      prop.format = 'number';
+    }
     if (hasOptions(prop)) {
       prop.options =
         type === 'status'
@@ -331,8 +357,7 @@ export function mountDatabase({ container, databaseId, inline = false }) {
 
   /** Add a property at the end, or next to another one (`beside`, `side`). */
   function addProperty(anchor, { beside = null, side = 'right' } = {}) {
-    chooseType(anchor, (type) => {
-      const prop = newProperty(type);
+    const place = (prop) => {
       if (beside) {
         const view = currentView();
         const order = orderedProperties(view).map((item) => item.id);
@@ -340,8 +365,45 @@ export function mountDatabase({ container, databaseId, inline = false }) {
         view.order = order;
       }
       saveProperties([...db.properties, prop]);
-      const cell = root.querySelector(`[data-header="${prop.id}"]`);
-      if (cell) propertyMenu(prop, cell, { rename: true });
+      return root.querySelector(`[data-header="${prop.id}"]`);
+    };
+    chooseType(
+      anchor,
+      (type) => {
+        const prop = newProperty(type);
+        const cell = place(prop);
+        if (cell) propertyMenu(prop, cell, { rename: true });
+      },
+      (preset) => {
+        if (preset.key === 'formula') {
+          const prop = newProperty('formula');
+          const cell = place(prop);
+          if (cell) editFormula(prop, cell);
+          return;
+        }
+        // A ready-made formula: choose what it works on, nothing to write.
+        openPresetBuilder({
+          preset,
+          anchor,
+          properties: db.properties,
+          onCreate: ({ name, expression, format }) => {
+            place({ id: newId('p'), name: freeName(name), type: 'formula', expression, format });
+          },
+        });
+      },
+    );
+  }
+
+  /** Write or change the formula of a calculated property. */
+  function editFormula(prop, anchor) {
+    if (!db.can_edit) return;
+    const current = property(prop.id) ?? prop;
+    openFormulaEditor({
+      anchor,
+      prop: current,
+      properties: db.properties,
+      sampleRow: visibleRows(currentView())[0] ?? null,
+      onSave: (changes) => saveProperty({ ...(property(prop.id) ?? current), ...changes }),
     });
   }
 
@@ -366,7 +428,16 @@ export function mountDatabase({ container, databaseId, inline = false }) {
     const commitName = () => {
       const next = name.value.trim();
       const current = property(prop.id);
-      if (next && current && next !== current.name) saveProperty({ ...current, name: next });
+      if (!next || !current || next === current.name) return;
+      // Formulas call properties by name: they follow the new one.
+      saveProperties(
+        db.properties.map((item) => {
+          if (item.id === current.id) return { ...item, name: next };
+          if (item.type !== 'formula' || !item.expression) return item;
+          const expression = renameProperty(item.expression, current.name, next);
+          return expression === item.expression ? item : { ...item, expression };
+        }),
+      );
     };
     name.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -404,6 +475,7 @@ export function mountDatabase({ container, databaseId, inline = false }) {
         h('span', { class: 'db-property-type', title: TYPES[prop.type].label }, icon(TYPES[prop.type].icon, 16)),
         name,
       ),
+      prop.type === 'formula' ? row('Edit formula', 'formula', () => editFormula(prop, anchor)) : null,
       hasOptions(prop) || prop.type === 'number'
         ? row(
             'Edit property',
@@ -412,7 +484,7 @@ export function mountDatabase({ container, databaseId, inline = false }) {
             { keep: true, more: true },
           )
         : null,
-      isTitle
+      isTitle || prop.type === 'formula'
         ? null
         : row(
             'Change type',
@@ -572,10 +644,34 @@ export function mountDatabase({ container, databaseId, inline = false }) {
         { label: 'Copy link', icon: 'link', onSelect: () => copyPageLink(row.id) },
         editable ? { label: 'Duplicate', icon: 'copy', onSelect: () => duplicateRow(row) } : null,
         editable ? { label: 'Add a row below', icon: 'plus', onSelect: () => addRow({ afterId: row.id }) } : null,
+        editable
+          ? {
+              label: 'Color',
+              icon: 'palette',
+              // Shown on the row here, and on its entry in the calendar.
+              submenu: colorItems(row.color, (color) => updateRow(row, { color })),
+            }
+          : null,
         editable ? { separator: true } : null,
         editable ? { label: 'Delete', icon: 'trash-2', danger: true, hint: 'Del', onSelect: () => deleteRow(row) } : null,
       ],
     });
+  }
+
+  /** Menu items to choose a colour of the palette; "Default" removes it. */
+  function colorItems(current, onPick) {
+    return COLORS.map((color) => ({
+      label: color === 'default' ? 'No color' : color[0].toUpperCase() + color.slice(1),
+      swatch: color,
+      checked: (current ?? 'default') === color,
+      onSelect: () => onPick(color === 'default' ? null : color),
+    }));
+  }
+
+  function setDatabaseColor(color) {
+    db.color = color;
+    pushViews.cancel();
+    pushSchema(() => ({ views: db.views, color: db.color ?? null }));
   }
 
   // -- view menus -------------------------------------------------------------------
@@ -664,6 +760,12 @@ export function mountDatabase({ container, databaseId, inline = false }) {
                 changeView({ hidden: [...next] }, { full: true });
               },
             })),
+        },
+        {
+          label: 'Color in the calendar',
+          icon: 'palette',
+          // For every row that has no colour of its own.
+          submenu: colorItems(db.color, setDatabaseColor),
         },
         { separator: true },
         {
@@ -1014,8 +1116,30 @@ export function mountDatabase({ container, databaseId, inline = false }) {
     );
   }
 
+  /** The table on screen, for changes that touch a few rows only. */
+  let table = null;
+
+  /**
+   * Rows were added, removed, moved or changed (`dirty`: the ids of changed
+   * ones). A table redraws those lines only; a board is drawn again.
+   */
+  function refreshRows(dirty = []) {
+    const view = currentView();
+    if (!table || view.type !== 'table') {
+      renderBody();
+      return;
+    }
+    table.sync(visibleRows(view), new Set(dirty));
+    if (editTitleOf) {
+      const id = editTitleOf;
+      editTitleOf = null;
+      table.edit(id, 'title');
+    }
+  }
+
   function renderBody() {
     const view = currentView();
+    bindSchema(db.properties);
     const scroller = body.querySelector('.db-scroll');
     const scroll = scroller ? [scroller.scrollLeft, scroller.scrollTop] : null;
     const editing = editTitleOf;
@@ -1038,13 +1162,15 @@ export function mountDatabase({ container, databaseId, inline = false }) {
       changeView,
       propertyMenu,
       addProperty,
+      editFormula,
       // A row opens beside the database, as in Notion; Ctrl+click and the
       // middle button open it in a new tab.
       openRow: (row, event) => (wantsNewTab(event) ? openPage(row.id, event) : openPeek(row.id)),
       rowMenu,
       peekedId: peekedPageId(),
     };
-    replace(body, view.type === 'board' ? renderBoard(context) : renderTable(context));
+    table = view.type === 'board' ? null : renderTable(context);
+    replace(body, table ? table.el : renderBoard(context));
     const next = body.querySelector('.db-scroll');
     if (next && scroll) {
       [next.scrollLeft, next.scrollTop] = scroll;
