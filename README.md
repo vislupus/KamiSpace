@@ -410,6 +410,16 @@ multi-select, checkbox, URL, text, formula).
 (`/equation`) or inline in a sentence (`$$…$$`, Ctrl+Shift+E, or the toolbar).
 Click an equation to edit it.
 
+**From page to page** — the path at the top is also a way sideways: rest the
+pointer on any page in it (or click the last one) and the pages beside it —
+those in the same parent — are listed; a click opens one, Ctrl+click or the
+middle button in a new tab. A long list shows the pages around the current
+one and *N more*.
+
+**Copying from Notion** — select blocks in Notion, copy, paste here: to-dos
+keep their check boxes, toggles (and toggle headings) stay toggles, callouts
+keep their icon, pictures are imported into the page.
+
 **Pages inside pages** — a new sub-page appears as a link in its parent.
 `/page` creates one right where the caret is; `@` or `[[` mentions any other
 page, and pasting a page's address does the same. Links always show the
@@ -481,6 +491,7 @@ down (or use the arrow keys), then *Save position*.
 | Ctrl+/ | List of shortcuts |
 | Esc | Select the block the caret is in |
 | ↑ / ↓ (block selected) | Select the block above / below |
+| Shift+↑ / Shift+↓ (block selected) | Select one block more, or one less. A selection that leaves its block — by dragging, with Shift+arrows, or Ctrl+A — always covers whole blocks, each marked with its own rectangle |
 | Enter (block selected) | Write in it again |
 | Delete or Backspace (block selected) | Delete the block — also while its ⠿ menu is open |
 | Ctrl+D | Duplicate the block |
@@ -620,7 +631,7 @@ automated tests.
 | Block handling | `+` button, drag handle with drop indicator and block menu (turn into, duplicate, move, delete) for every block at any depth — inside toggles, columns, callouts, quotes and for single list items; keyboard move/duplicate; floating selection toolbar |
 | Links | Hover card (address, copy, edit, remove), click to open, Ctrl+K editor with page suggestions, "Paste as" URL / bookmark / embed |
 | Files | Drag-and-drop and paste upload with placeholders, images with resize handles, alignment, caption and full-size view (lazy loaded), video and audio players with seeking, PDF preview, download cards; type allow-list with content sniffing, size limit, generated storage names, access-controlled downloads |
-| Pages | Unlimited nesting, sub-pages linked in their parent, icon, cover image with repositioning, appearance (font, text size, full width), lock, create / rename / move (dialog and sidebar drag-and-drop) / duplicate / delete, recycle bin, favourites, recents, breadcrumbs, library of all pages |
+| Pages | Unlimited nesting, sub-pages linked in their parent, icon, cover image with repositioning, appearance (font, text size, full width), lock, create / rename / move (dialog and sidebar drag-and-drop) / duplicate / delete, recycle bin, favourites, recents, breadcrumbs (pointing at a page in the path lists the pages beside it, to go sideways), library of all pages |
 | Markdown | Export a page as `.md`, import `.md` files as pages, copy page contents |
 | Tasks | Assign to-do items to people (`@name`, carried over on Enter, several at once, whole list), due dates, "My tasks" with a counter; the assignee can tick a task from the list or in a read-only page |
 | Calendar | Year / month / week / day views; Monday-first ISO weeks with week numbers; DD.MM.YYYY and 24-hour time; Europe/Sofia with clock changes; Bulgarian official holidays, Orthodox Easter and days in lieu, calculated offline; dated database rows (with or without time, ranges) and due tasks; new events, drag to another day |
@@ -643,8 +654,10 @@ automated tests.
 | Area | Limit |
 |---|---|
 | Block handles | A table is one block; its rows and columns have their own handles. A column layout cannot be dropped inside another column |
-| Tables | Cells cannot be merged from the interface. A selected block is one block: Shift+↑/↓ does not extend the selection to several blocks (select text across them with the mouse or Shift+arrows instead) |
+| Tables | Cells cannot be merged from the interface |
+| Selecting blocks | As in Notion, a selection that spans blocks is made of whole blocks: half of one paragraph together with half of the next cannot be selected. On touch screens the selection is left as the handles set it |
 | Calendar | Holidays follow the Labour Code as in force since 2017 (earlier years are shown without days in lieu); extra days off declared by the government for a single year, and school holidays, are not included. Times are clock times in Europe/Sofia — the zone is fixed, not a setting. An event that runs past midnight is drawn as a bar in the all-day row, not in the time grid. Recurring events and reminders do not exist |
+| Paste from Notion | Notion puts its blocks on the clipboard as HTML made from Markdown; that is what is read. Headings, text with formatting and links, bulleted and numbered lists, to-dos (with their state), toggles and toggle headings, callouts, quotes, code, dividers and tables become the same blocks here. Columns arrive one under the other, and databases, colours and comments do not come along. Pictures are fetched by the server from the address Notion gives (it has to be reachable without signing in, and `KAMISPACE_ALLOW_REMOTE_FETCH` on); the ones that cannot be fetched are left out with a notice. Checked against HTML of the shape Notion produces, not against every Notion version — if a block arrives wrong, `copy(JSON.stringify(kamispaceLastPaste))` in the browser console right after pasting copies exactly what the clipboard held |
 | Paste from Word | Pictures are recovered from the clipboard's RTF data, which is how Word provides them; tested with clipboard data in Word's format, not with every Word version. Pictures that cannot be recovered are left out with a notice |
 | Embeds | Many sites refuse to be shown inside another page; for those the frame stays empty and the link below it opens the site. Only `https` pages can be embedded |
 | Web bookmarks | Title and description are fetched by the server, which therefore needs outbound internet access (and no proxy in between). Without it the card shows the address |

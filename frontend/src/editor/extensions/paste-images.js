@@ -10,6 +10,7 @@
 import { Extension } from '@tiptap/core';
 import { NodeSelection, Plugin, PluginKey, Selection } from '@tiptap/pm/state';
 import { toast } from '../../lib/toast.js';
+import { normalizePastedHtml } from '../notion-html.js';
 import { appContext } from './app-context.js';
 
 const PICTURE_HEADER =
@@ -138,9 +139,22 @@ export const PasteImages = Extension.create({
       new Plugin({
         key: new PluginKey('pasteImages'),
         props: {
+          // Every pasted HTML passes here (also after its pictures were
+          // imported below): to-dos, toggles and callouts copied from Notion
+          // become the editor's own blocks.
+          transformPastedHTML: (html) => normalizePastedHtml(html),
           handlePaste(view, event) {
             if (!editor.isEditable) return false;
             const html = event.clipboardData?.getData('text/html');
+            // What the last paste brought, for looking into a paste that went
+            // wrong: copy(JSON.stringify(kamispaceLastPaste)) in the console.
+            // Kept in memory only, until the next paste or reload.
+            try {
+              const data = event.clipboardData;
+              window.kamispaceLastPaste = Object.fromEntries([...(data?.types ?? [])].filter((type) => type !== 'Files').map((type) => [type, data.getData(type)]));
+            } catch {
+              // Looking is optional; pasting goes on.
+            }
             if (!html || !/<img\b/i.test(html)) return false;
             const probe = new DOMParser().parseFromString(html, 'text/html');
             const foreign = [...probe.querySelectorAll('img')].filter(

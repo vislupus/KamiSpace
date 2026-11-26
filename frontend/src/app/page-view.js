@@ -18,6 +18,7 @@ import {
   toggleFavorite,
   trashPage,
 } from './actions.js';
+import { attachCrumbMenu, closeCrumbMenu } from './crumb-menu.js';
 import { mountDatabase } from './database/index.js';
 import { ADDABLE_TYPES, TYPES, bindSchema, editValue, newId, renderValue, valueOf } from './database/values.js';
 import { openEmojiPicker } from '../lib/emoji-picker.js';
@@ -137,29 +138,31 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
   );
 
   function renderCrumbs() {
+    closeCrumbMenu();
     const parts = [];
     if (page.workspace_name) {
       const label = page.workspace_name === 'Personal' ? 'Private' : page.workspace_name;
       parts.push(h('span', { class: 'crumb' }, h('span', { class: 'crumb-text' }, label)));
     }
     for (const crumb of page.breadcrumbs) {
-      parts.push(
-        h(
-          'a',
-          { class: 'crumb', href: pagePath(crumb.id), dataset: { link: '' } },
-          crumb.icon ? h('span', { class: 'crumb-emoji' }, crumb.icon) : null,
-          h('span', { class: 'crumb-text' }, crumb.title || 'Untitled'),
-        ),
+      const link = h(
+        'a',
+        { class: 'crumb', href: pagePath(crumb.id), dataset: { link: '' } },
+        crumb.icon ? h('span', { class: 'crumb-emoji' }, crumb.icon) : null,
+        h('span', { class: 'crumb-text' }, crumb.title || 'Untitled'),
       );
+      // Pointing at a page of the path lists the pages next to it.
+      attachCrumbMenu(link, crumb.id, page.id);
+      parts.push(link);
     }
-    parts.push(
-      h(
-        'span',
-        { class: 'crumb', 'aria-current': 'page' },
-        page.icon ? h('span', { class: 'crumb-emoji' }, page.icon) : null,
-        h('span', { class: 'crumb-text' }, page.title || 'Untitled'),
-      ),
+    const here = h(
+      'span',
+      { class: 'crumb', 'aria-current': 'page' },
+      page.icon ? h('span', { class: 'crumb-emoji' }, page.icon) : null,
+      h('span', { class: 'crumb-text' }, page.title || 'Untitled'),
     );
+    attachCrumbMenu(here, page.id, page.id);
+    parts.push(here);
     replace(
       crumbs,
       parts.flatMap((part, index) =>
@@ -1039,6 +1042,7 @@ export async function mountPageView({ container, topbar, pageId, shell, mountSig
     focusEditor: () => editor?.commands.focus(),
     destroy() {
       destroyed = true;
+      closeCrumbMenu();
       controller.abort();
       for (const unsubscribe of subscriptions) unsubscribe();
       saveTitle.cancel();

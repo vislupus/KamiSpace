@@ -11,6 +11,7 @@ import { StarterKit } from '@tiptap/starter-kit';
 import { AppContext } from './extensions/app-context.js';
 import { Attachment } from './extensions/attachment.js';
 import { BlockHandle } from './extensions/block-handle.js';
+import { BlockSelection } from './extensions/block-selection.js';
 import { BlockKeys } from './extensions/block-keys.js';
 import { Bookmark } from './extensions/bookmark.js';
 import { BubbleToolbar } from './extensions/bubble-toolbar.js';
@@ -128,6 +129,7 @@ export function createEditor({
         TableControls,
         BlockKeys.configure({ onExitTop }),
         NotionKeys,
+        BlockSelection,
         PasteImages.configure({ upload }),
         Uploads.configure({ upload, limits }),
       ]
