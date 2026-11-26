@@ -456,3 +456,43 @@ a.crumb:hover {
     display: none;
   }
 }
+
+/* ---- Pages next to the one in the path ------------------------------------- */
+.crumb[data-siblings] {
+  cursor: pointer;
+}
+.crumb[data-siblings]:hover,
+.crumb.is-open {
+  background: var(--bg-hover);
+}
+.crumb-menu {
+  width: 260px;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+}
+.crumb-menu a.menu-item {
+  color: inherit;
+  text-decoration: none;
+}
+.crumb-menu .menu-item[aria-current="page"] {
+  background: var(--accent-soft);
+}
+.crumb-menu .menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crumb-more {
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.crumb-more:hover {
+  color: var(--text);
+}

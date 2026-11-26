@@ -1624,3 +1624,35 @@ button.task-chip:hover {
     padding-bottom: 0;
   }
 }
+
+/* ---- Several blocks selected ------------------------------------------------ */
+/* Whole blocks, each with its own rectangle, as in Notion; the ragged text
+   highlight of the browser is hidden while they are shown. */
+.doc.has-block-selection ::selection,
+.doc.has-block-selection::selection {
+  background: transparent;
+}
+.doc .is-block-selected {
+  border-radius: 3px;
+  background-color: var(--block-selection);
+  /* One pixel around: rectangles of neighbouring blocks never overlap. */
+  box-shadow: 0 0 0 1px var(--block-selection);
+}
+/* A bulleted or numbered item: the rectangle reaches under its bullet or number. */
+.doc :is(ul:not([data-type="taskList"]), ol) > li.is-block-selected {
+  position: relative;
+  background: none;
+  box-shadow: none;
+}
+.doc :is(ul:not([data-type="taskList"]), ol) > li.is-block-selected::after {
+  content: "";
+  position: absolute;
+  inset: -1px -1px -1px calc(-1.75em - 1px);
+  border-radius: 3px;
+  background: var(--block-selection);
+  pointer-events: none;
+}
+/* Blocks with a frame of their own keep it; the tint goes around them. */
+.doc :is(.image-block, .code-block, .embed, .bookmark, .database-block, .video-block).is-block-selected {
+  background-color: transparent;
+}
